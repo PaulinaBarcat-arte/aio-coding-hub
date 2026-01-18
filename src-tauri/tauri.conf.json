@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AIO Coding Hub",
+  "version": "0.8.0",
+  "identifier": "io.aio.codinghub",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "AIO Coding Hub",
+        "width": 1500,
+        "height": 900
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/dyndynjyxa/aio-coding-hub/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYzQzM1RUIxM0I1MzQxNjQKUldSa1FWTTdzVjdEWXdCNE5mbGZHTWFNczZrT1UrMzZPdjJRWldHTlQ3WnZIV3dEM0U1S1BFaWEK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

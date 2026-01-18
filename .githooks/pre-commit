@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo "[pre-commit] Auto-fixing formatting for staged files (Prettier + cargo fmt)..."
+
+prettier_targets=()
+rust_tauri_targets=()
+while IFS= read -r file; do
+  case "$file" in
+    src/*)
+      case "$file" in
+        *.js|*.jsx|*.ts|*.tsx|*.css|*.scss|*.md|*.json|*.yaml|*.yml)
+          prettier_targets+=("$file")
+          ;;
+      esac
+      ;;
+    src-tauri/*)
+      case "$file" in
+        *.rs)
+          rust_tauri_targets+=("$file")
+          ;;
+      esac
+      ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACMR)
+
+# Avoid auto-fixing when files are partially staged, otherwise formatters may
+# rewrite working tree content and break the user's intended staging.
+partially_staged=()
+if [ "${#prettier_targets[@]}" -gt 0 ] || [ "${#rust_tauri_targets[@]}" -gt 0 ]; then
+  all_targets=("${prettier_targets[@]+"${prettier_targets[@]}"}" "${rust_tauri_targets[@]+"${rust_tauri_targets[@]}"}")
+  for file in "${all_targets[@]}"; do
+    if [ -n "$file" ] && ! git diff --quiet -- "$file"; then
+      partially_staged+=("$file")
+    fi
+  done
+fi
+
+if [ "${#partially_staged[@]}" -gt 0 ]; then
+  echo "[pre-commit] Detected partially staged files that need formatting:"
+  for file in "${partially_staged[@]}"; do
+    echo "  - $file"
+  done
+  echo "[pre-commit] Please stage those files completely (or stash unstaged hunks), then retry the commit."
+  exit 1
+fi
+
+if [ "${#prettier_targets[@]}" -gt 0 ]; then
+  pnpm exec prettier --write -- "${prettier_targets[@]}"
+  git add -- "${prettier_targets[@]}"
+fi
+
+# `cargo fmt` formats the crate/workspace; we only run it when staged Rust files exist.
+# After formatting, stage any changes under src-tauri so the commit matches what was checked.
+if [ "${#rust_tauri_targets[@]}" -gt 0 ]; then
+  (cd "src-tauri" && cargo fmt)
+  git add -u -- "src-tauri"
+fi
+
+echo "[pre-commit] Running checks for src/ and src-tauri/..."
+pnpm run check:precommit

@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #f8fafc;
+  color: #0f172a;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    Arial,
+    "Apple Color Emoji",
+    "Segoe UI Emoji";
+}
+
+/* Custom scrollbar - overlay style, minimal footprint */
+.scrollbar-overlay {
+  overflow-y: overlay; /* WebKit: scrollbar overlays content, doesn't take space */
+  scrollbar-gutter: auto;
+}
+
+/* Fallback for non-WebKit browsers */
+@supports not (overflow-y: overlay) {
+  .scrollbar-overlay {
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+}
+
+.scrollbar-overlay::-webkit-scrollbar {
+  width: 6px;
+  background: transparent;
+}
+
+.scrollbar-overlay::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-overlay::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+
+.scrollbar-overlay:hover::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.6);
+}
+
+.scrollbar-overlay::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+}
+
+/* Firefox */
+.scrollbar-overlay {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}
+
+.scrollbar-overlay:hover {
+  scrollbar-color: rgba(148, 163, 184, 0.6) transparent;
+}

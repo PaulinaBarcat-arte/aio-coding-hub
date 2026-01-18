@@ -1,0 +1,96 @@
+name: ci
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title (Conventional Commits)
+        shell: bash
+        run: |
+          title="${{ github.event.pull_request.title }}"
+          echo "PR title: $title"
+          pattern='^(feat|fix|docs|chore|style|refactor|perf|test|ci|build|revert)(\\([^)]+\\))?: .+'
+          if [[ ! "$title" =~ $pattern ]]; then
+            echo "::error::Invalid PR title. Expected Conventional Commits, e.g. 'feat(ui): add updater dialog'."
+            echo "::error::Pattern: $pattern"
+            exit 1
+          fi
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm build
+
+  rust:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps (Tauri/Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librsvg2-dev patchelf
+
+          # AppIndicator (Ubuntu 22.04 typically uses ayatana; some images still provide appindicator)
+          if ! sudo apt-get install -y libayatana-appindicator3-dev; then
+            sudo apt-get install -y libappindicator3-dev
+          fi
+
+          # WebKit2GTK + libsoup (Ubuntu images vary: 4.1/4.0 + soup3/soup2)
+          if ! sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev; then
+            sudo apt-get install -y libwebkit2gtk-4.0-dev libsoup2.4-dev
+          fi
+
+      - name: Install Rust 1.90.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.90.0
+          components: rustfmt, clippy
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Rust fmt
+        working-directory: src-tauri
+        run: cargo fmt -- --check
+
+      - name: Sync Cargo.lock (for release-please version bumps)
+        working-directory: src-tauri
+        run: cargo update --workspace
+
+      - name: Rust clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Rust test
+        working-directory: src-tauri
+        run: cargo test --locked

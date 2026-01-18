@@ -1,0 +1,477 @@
+import { toast } from "sonner";
+import { Button } from "../ui/Button";
+import { Card } from "../ui/Card";
+import type { ClaudeModelValidationResult } from "../services/claudeModelValidation";
+import type { ClaudeValidationTemplateKey } from "../services/claudeValidationTemplates";
+import {
+  detectReverseProxyKeywords,
+  evaluateClaudeValidation,
+  getClaudeValidationOutputExpectation,
+} from "../services/claudeValidationTemplates";
+import { cn } from "../utils/cn";
+import {
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Zap,
+  FileJson,
+  Copy,
+  Server,
+  Box,
+  Braces,
+  Activity,
+  ShieldCheck,
+  ShieldAlert,
+  BrainCircuit,
+  Terminal,
+} from "lucide-react";
+
+type Props = {
+  templateKey: ClaudeValidationTemplateKey;
+  result: ClaudeModelValidationResult | null;
+};
+
+function get<T>(obj: unknown, key: string): T | null {
+  if (!obj || typeof obj !== "object") return null;
+  const v = (obj as Record<string, unknown>)[key];
+  return v as T | null;
+}
+
+// --- Components ---
+
+function MetricCard({
+  label,
+  value,
+  icon: Icon,
+  subValue,
+}: {
+  label: string;
+  value: React.ReactNode;
+  icon?: any;
+  subValue?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+        {Icon && <Icon className="h-3.5 w-3.5" />}
+        {label}
+      </div>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-sm font-semibold text-slate-900">{value}</span>
+        {subValue && <span className="text-xs text-slate-400">{subValue}</span>}
+      </div>
+    </div>
+  );
+}
+
+function SectionHeader({ title, icon: Icon }: { title: string; icon: any }) {
+  return (
+    <div className="flex items-center gap-2 border-b border-slate-100 pb-2 mb-3">
+      <div className="rounded p-1 bg-slate-100 text-slate-600">
+        <Icon className="h-3.5 w-3.5" />
+      </div>
+      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{title}</span>
+    </div>
+  );
+}
+
+function CheckRow({
+  label,
+  ok,
+  value,
+  required = true,
+}: {
+  label: string;
+  ok?: boolean;
+  value?: React.ReactNode;
+  required?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between py-1.5 text-sm">
+      <div className="flex items-center gap-2">
+        {ok != null && required ? (
+          ok ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+          ) : (
+            <XCircle className="h-4 w-4 text-rose-500 shrink-0" />
+          )
+        ) : (
+          <div className="h-4 w-4 shrink-0 rounded-full border border-slate-300 bg-slate-100" />
+        )}
+        <span className={cn("text-slate-700", !required && "text-slate-400")}>{label}</span>
+      </div>
+      {value && <span className="font-mono text-xs text-slate-600">{value}</span>}
+    </div>
+  );
+}
+
+function formatClaudeValidationFailure(result: ClaudeModelValidationResult) {
+  const status =
+    typeof result.status === "number" && Number.isFinite(result.status) ? result.status : null;
+  const raw = typeof result.error === "string" ? result.error.trim() : "";
+
+  const statusLabel = status != null ? `HTTP ${status}` : "请求失败";
+
+  if (status === 401 || status === 403) {
+    return { summary: `${statusLabel} · 鉴权失败`, detail: "请检查 API Key 权限", raw };
+  }
+  if (status === 429) {
+    return { summary: `${statusLabel} · 触发限流`, detail: "请稍后重试", raw };
+  }
+  if (status != null && status >= 500) {
+    return { summary: `${statusLabel} · 服务端错误`, detail: "上游服务不可用", raw };
+  }
+  if (raw.includes("EMPTY_RESPONSE_BODY")) {
+    return { summary: "空响应", detail: "上游未返回数据", raw };
+  }
+  if (raw.startsWith("SEC_INVALID_INPUT")) {
+    return { summary: "配置无效", detail: "请检查高级请求配置", raw };
+  }
+
+  return { summary: status != null ? `${statusLabel}` : "未知错误", detail: raw, raw };
+}
+
+export function ClaudeModelValidationResultPanel({ templateKey, result }: Props) {
+  if (!result) {
+    return (
+      <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 text-slate-500">
+        <Server className="h-8 w-8 text-slate-300" />
+        <span className="text-sm">暂无验证结果</span>
+      </div>
+    );
+  }
+
+  // --- Failure View ---
+  if (!result.ok) {
+    const failure = formatClaudeValidationFailure(result);
+    return (
+      <Card className="overflow-hidden !p-0">
+        <div className="border-b border-rose-100 bg-rose-50 px-4 py-3">
+          <div className="flex items-center gap-2 text-rose-800">
+            <XCircle className="h-5 w-5" />
+            <span className="font-semibold">验证失败</span>
+          </div>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="space-y-1">
+            <div className="text-lg font-medium text-slate-900">{failure.summary}</div>
+            <div className="text-sm text-slate-500">{failure.detail}</div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <MetricCard label="状态码" value={result.status ?? "—"} icon={Activity} />
+            <MetricCard
+              label="延迟"
+              value={result.duration_ms ? `${result.duration_ms}ms` : "—"}
+              icon={Clock}
+            />
+          </div>
+
+          {failure.raw && (
+            <div className="rounded-lg bg-slate-950 p-3">
+              <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-rose-300">
+                {failure.raw}
+              </pre>
+            </div>
+          )}
+        </div>
+      </Card>
+    );
+  }
+
+  // --- Success View ---
+  const evaluation = evaluateClaudeValidation(templateKey, result);
+  const reverseProxy = detectReverseProxyKeywords(result);
+  const signals = result.signals as unknown;
+  const usage = result.usage as unknown;
+
+  const mentionsBedrock = get<boolean>(signals, "mentions_amazon_bedrock");
+  const outputChars = result.output_text_chars ?? 0;
+  const outputPreview = result.output_text_preview ?? "";
+
+  const requestedModel = result.requested_model?.trim() || null;
+  const respondedModel = result.responded_model?.trim() || null;
+  const modelConsistency =
+    requestedModel && respondedModel ? requestedModel === respondedModel : null;
+
+  const cache5m = get<number>(usage, "cache_creation_5m_input_tokens");
+  const cache1h = get<number>(usage, "cache_creation_1h_input_tokens");
+  const cacheDetailPass = cache5m != null && cache1h != null;
+
+  const inputTokens = get<number>(usage, "input_tokens");
+  const outputTokens = get<number>(usage, "output_tokens");
+  const cacheCreate = cache5m ?? cache1h ?? get<number>(usage, "cache_creation_input_tokens");
+  const cacheRead = get<number>(usage, "cache_read_input_tokens");
+
+  const {
+    requireModelConsistency,
+    requireSseStopReasonMaxTokens,
+    requireThinkingOutput,
+    requireSignature,
+    requireResponseId,
+    requireServiceTier,
+    requireOutputConfig,
+    requireToolSupport,
+    requireMultiTurn,
+    requireCacheDetail,
+  } = evaluation.template.evaluation;
+
+  const {
+    outputChars: outputCheck,
+    cacheDetail: cacheDetailCheck,
+    sseStopReasonMaxTokens: sseStopReasonMaxTokensCheck,
+    thinkingOutput: thinkingCheck,
+    signature: signatureCheck,
+    responseId: responseIdCheck,
+    serviceTier: serviceTierCheck,
+    outputConfig: outputConfigCheck,
+    toolSupport: toolSupportCheck,
+    multiTurn: multiTurnCheck,
+    reverseProxy: reverseProxyCheck,
+  } = evaluation.checks;
+
+  const outputExpectation = getClaudeValidationOutputExpectation(evaluation.template);
+
+  const responseParseMode = get<string>(signals, "response_parse_mode");
+  const parsedAsSse = responseParseMode === "sse" || responseParseMode === "sse_fallback";
+  const sseMessageDeltaSeen =
+    get<boolean>(result.checks as unknown, "sse_message_delta_seen") === true;
+  const sseStopReasonValue = (() => {
+    const raw = get<string>(result.checks as unknown, "sse_message_delta_stop_reason");
+    const stopReason = typeof raw === "string" && raw.trim() ? raw.trim() : null;
+    if (!parsedAsSse) return `parse_mode=${responseParseMode ?? "—"}`;
+    if (!sseMessageDeltaSeen) return "缺少 message_delta";
+    return stopReason ?? "缺少 stop_reason";
+  })();
+
+  return (
+    <div className="space-y-6">
+      {reverseProxy.anyHit ? (
+        <Card className="overflow-hidden border border-amber-200 bg-amber-50/60">
+          <div className="flex items-start gap-3 px-4 py-3">
+            <div className="mt-0.5 rounded-lg bg-amber-100 p-1.5 text-amber-700 ring-1 ring-inset ring-amber-200">
+              <ShieldAlert className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-amber-900">
+                疑似逆向/反代痕迹（判定不通过）
+              </div>
+              <div className="mt-1 text-xs text-amber-800">
+                命中关键字：{" "}
+                <span className="font-mono">{reverseProxy.hits.join(", ") || "—"}</span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1 text-xs text-amber-800">
+                {reverseProxy.sources.responseHeaders.hits.length > 0 ? (
+                  <span className="rounded bg-amber-100 px-2 py-0.5 font-mono">
+                    headers: {reverseProxy.sources.responseHeaders.hits.join(", ")}
+                  </span>
+                ) : null}
+                {reverseProxy.sources.outputPreview.hits.length > 0 ? (
+                  <span className="rounded bg-amber-100 px-2 py-0.5 font-mono">
+                    output: {reverseProxy.sources.outputPreview.hits.join(", ")}
+                  </span>
+                ) : null}
+                {reverseProxy.sources.rawExcerpt.hits.length > 0 ? (
+                  <span className="rounded bg-amber-100 px-2 py-0.5 font-mono">
+                    sse: {reverseProxy.sources.rawExcerpt.hits.join(", ")}
+                  </span>
+                ) : null}
+              </div>
+              {reverseProxy.sources.responseHeaders.headerNames.length > 0 ? (
+                <div className="mt-1 text-xs text-amber-800">
+                  命中响应头：{" "}
+                  <span className="font-mono">
+                    {reverseProxy.sources.responseHeaders.headerNames.join(", ")}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
+      {/* 1. Header & Stats */}
+      <Card className="overflow-hidden !p-0">
+        <div className="flex items-center justify-between border-b border-emerald-100 bg-emerald-50/50 px-4 py-3">
+          <div className="flex items-center gap-2 text-emerald-800">
+            <CheckCircle2 className="h-5 w-5" />
+            <span className="font-semibold">请求成功</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {mentionsBedrock && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                <Server className="h-3 w-3" />
+                Bedrock
+              </span>
+            )}
+            <span className="font-mono text-xs text-emerald-700/70">#{result.requested_model}</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-4">
+          <div className="bg-white p-4">
+            <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
+              <Activity className="h-3.5 w-3.5" />
+              HTTP
+            </div>
+            <div className="text-lg font-semibold text-slate-900">{result.status}</div>
+          </div>
+          <div className="bg-white p-4">
+            <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
+              <Clock className="h-3.5 w-3.5" />
+              延迟
+            </div>
+            <div className="text-lg font-semibold text-slate-900">{result.duration_ms}ms</div>
+          </div>
+          <div className="bg-white p-4">
+            <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
+              <Zap className="h-3.5 w-3.5" />
+              消耗
+            </div>
+            <div className="text-lg font-semibold text-slate-900">
+              {inputTokens} <span className="text-xs text-slate-400">输入</span> · {outputTokens}{" "}
+              <span className="text-xs text-slate-400">输出</span>
+            </div>
+          </div>
+          <div className="bg-white p-4">
+            <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
+              <Box className="h-3.5 w-3.5" />
+              缓存
+            </div>
+            <div className="text-lg font-semibold text-slate-900">
+              {cacheRead ?? 0} <span className="text-xs text-slate-400">读取</span> ·{" "}
+              {cacheCreate ?? 0} <span className="text-xs text-slate-400">写入</span>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* 2. Detailed Checks Grid */}
+      <div className="grid gap-6 sm:grid-cols-2">
+        {/* Left Column: Core Checks */}
+        <div className="space-y-6">
+          <section>
+            <SectionHeader title="协议 & 模型" icon={ShieldCheck} />
+            <div className="space-y-1">
+              {reverseProxyCheck ? (
+                <CheckRow
+                  label="疑似逆向/反代痕迹"
+                  ok={reverseProxyCheck.ok}
+                  value={reverseProxy.anyHit ? reverseProxy.hits.join(", ") : "—"}
+                />
+              ) : null}
+              {requireModelConsistency ? (
+                <CheckRow
+                  label="模型一致性"
+                  ok={modelConsistency ?? false}
+                  value={respondedModel}
+                />
+              ) : null}
+              {requireResponseId ? (
+                <CheckRow label="响应 ID (ID)" ok={responseIdCheck?.ok} value="present" />
+              ) : null}
+              {requireServiceTier ? (
+                <CheckRow label="服务层级 (Tier)" ok={serviceTierCheck?.ok} value="present" />
+              ) : null}
+            </div>
+          </section>
+
+          {requireThinkingOutput || requireSignature ? (
+            <section>
+              <SectionHeader title="思考过程 (Thinking)" icon={BrainCircuit} />
+              <div className="space-y-1">
+                {requireThinkingOutput && thinkingCheck ? (
+                  <CheckRow
+                    label="思考输出"
+                    ok={thinkingCheck.ok}
+                    value={`${evaluation.derived.thinkingChars ?? 0} 字符`}
+                  />
+                ) : null}
+                {requireSignature && signatureCheck ? (
+                  <CheckRow
+                    label="思考签名"
+                    ok={signatureCheck.ok}
+                    value={`${evaluation.derived.signatureChars ?? 0} 字符`}
+                  />
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+        </div>
+
+        {/* Right Column: Capabilities & Output */}
+        <div className="space-y-6">
+          <section>
+            <SectionHeader title="功能支持" icon={Terminal} />
+            <div className="space-y-1">
+              {requireOutputConfig ? (
+                <CheckRow label="输出配置 (Output Config)" ok={outputConfigCheck?.ok} />
+              ) : null}
+              {requireToolSupport ? (
+                <CheckRow label="工具调用 (Tool Use)" ok={toolSupportCheck?.ok} />
+              ) : null}
+              {requireMultiTurn ? (
+                <CheckRow label="多轮对话 (Multi-turn)" ok={multiTurnCheck?.ok} />
+              ) : null}
+              {requireCacheDetail ? (
+                <CheckRow
+                  label="缓存明细 (Cache Breakdown)"
+                  ok={cacheDetailCheck?.ok ?? cacheDetailPass}
+                  value={`${cache5m ?? "-"} / ${cache1h ?? "-"}`}
+                />
+              ) : null}
+            </div>
+          </section>
+
+          <section>
+            <SectionHeader title="输出期望" icon={FileJson} />
+            <div className="space-y-1">
+              {requireSseStopReasonMaxTokens && sseStopReasonMaxTokensCheck ? (
+                <CheckRow
+                  label={sseStopReasonMaxTokensCheck.label}
+                  ok={sseStopReasonMaxTokensCheck.ok}
+                  value={sseStopReasonValue}
+                />
+              ) : null}
+              {outputCheck && outputExpectation && (
+                <CheckRow
+                  label={outputCheck.label}
+                  ok={outputCheck.ok}
+                  value={`${outputChars} 字符`}
+                />
+              )}
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {/* 3. Output Preview */}
+      {outputPreview && (
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <SectionHeader title="输出预览" icon={Braces} />
+            <Button
+              size="sm"
+              variant="secondary"
+              className="!h-7 !px-2 text-xs"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(outputPreview);
+                  toast("已复制");
+                } catch {
+                  toast.error("复制失败");
+                }
+              }}
+            >
+              <Copy className="mr-1.5 h-3 w-3" />
+            </Button>
+          </div>
+          <div className="group relative rounded-lg border border-slate-200 bg-slate-900 p-4 font-mono text-xs leading-relaxed text-slate-300 shadow-sm transition-all hover:border-slate-300">
+            <span className="block whitespace-pre-wrap">{outputPreview}</span>
+            <div className="pointer-events-none absolute inset-0 rounded-lg ring-1 ring-inset ring-slate-400/10" />
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
