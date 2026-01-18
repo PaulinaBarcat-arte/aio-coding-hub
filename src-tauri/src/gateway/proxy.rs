@@ -554,10 +554,11 @@ pub(super) async fn enqueue_attempt_log_with_backpressure(
                 "warn",
                 "GW_ATTEMPT_LOG_CHANNEL_CLOSED",
                 format!(
-                    "attempt log channel closed; dropping attempt log trace_id={} cli={}",
+                    "attempt log channel closed; using write-through fallback trace_id={} cli={}",
                     attempt.trace_id, attempt.cli_key
                 ),
             );
+            request_attempt_logs::spawn_write_through(app.clone(), insert);
         }
         Err(_) => {
             if attempt_log_tx.try_send(insert).is_ok() {
@@ -700,10 +701,11 @@ pub(super) async fn enqueue_request_log_with_backpressure(
                 "warn",
                 "GW_REQUEST_LOG_CHANNEL_CLOSED",
                 format!(
-                    "request log channel closed; dropping request log trace_id={} cli={}",
+                    "request log channel closed; using write-through fallback trace_id={} cli={}",
                     trace_id, cli_key
                 ),
             );
+            request_logs::spawn_write_through(app.clone(), insert);
         }
         Err(_) => {
             if log_tx.try_send(insert).is_ok() {

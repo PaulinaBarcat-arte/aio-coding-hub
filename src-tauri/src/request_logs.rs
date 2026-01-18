@@ -335,9 +335,21 @@ pub fn start_buffered_writer(
     (tx, task)
 }
 
+pub fn spawn_write_through(app: tauri::AppHandle, item: RequestLogInsert) {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut cache = InsertBatchCache::default();
+        let items = [item];
+        if let Err(err) = insert_batch_with_retries(&app, &items, &mut cache) {
+            eprintln!("request_logs write-through insert error: {}", err.message);
+        }
+    });
+}
+
 fn writer_loop(app: tauri::AppHandle, mut rx: mpsc::Receiver<RequestLogInsert>) {
     let mut buffer: Vec<RequestLogInsert> = Vec::with_capacity(WRITE_BATCH_MAX);
-    let mut last_cleanup = Instant::now() - CLEANUP_MIN_INTERVAL;
+    let now = Instant::now();
+    let mut last_cleanup = now.checked_sub(CLEANUP_MIN_INTERVAL).unwrap_or(now);
+    let mut cleanup_due = last_cleanup == now;
     let mut cache = InsertBatchCache::default();
 
     while let Some(item) = rx.blocking_recv() {
@@ -356,11 +368,12 @@ fn writer_loop(app: tauri::AppHandle, mut rx: mpsc::Receiver<RequestLogInsert>) 
         }
         buffer.clear();
 
-        if last_cleanup.elapsed() >= CLEANUP_MIN_INTERVAL {
+        if cleanup_due || last_cleanup.elapsed() >= CLEANUP_MIN_INTERVAL {
             let retention_days = settings::log_retention_days_fail_open(&app);
             if let Err(err) = cleanup_expired(&app, retention_days) {
                 eprintln!("request_logs cleanup error: {err}");
             }
+            cleanup_due = false;
             last_cleanup = Instant::now();
         }
     }
