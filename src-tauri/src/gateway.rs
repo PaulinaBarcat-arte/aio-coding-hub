@@ -5,6 +5,7 @@ mod manager;
 mod proxy;
 mod response_fixer;
 mod routes;
+pub(crate) mod session_manager;
 mod streams;
 mod thinking_signature_rectifier;
 mod util;
