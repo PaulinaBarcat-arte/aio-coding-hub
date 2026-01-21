@@ -591,7 +591,10 @@ fn extract_gemini_token_from_env(content: &str) -> Option<String> {
     Some(value)
 }
 
-pub fn guess_cli_auth_token(app: &tauri::AppHandle, cli_key: &str) -> Result<Option<String>, String> {
+pub fn guess_cli_auth_token(
+    app: &tauri::AppHandle,
+    cli_key: &str,
+) -> Result<Option<String>, String> {
     validate_cli_key(cli_key)?;
 
     // Prefer cli-proxy backup snapshot if present (it may contain the user's real token before

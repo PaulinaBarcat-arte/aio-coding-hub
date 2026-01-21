@@ -40,8 +40,8 @@ use super::streams::{
 use super::thinking_signature_rectifier;
 use super::util::{
     body_for_introspection, build_target_url, compute_all_providers_unavailable_fingerprint,
-    compute_request_fingerprint, encode_url_component, extract_idempotency_key_hash,
-    ensure_cli_required_headers, infer_requested_model_info, inject_provider_auth, new_trace_id,
+    compute_request_fingerprint, encode_url_component, ensure_cli_required_headers,
+    extract_idempotency_key_hash, infer_requested_model_info, inject_provider_auth, new_trace_id,
     now_unix_millis, now_unix_seconds, strip_hop_headers, RequestedModelLocation,
     MAX_REQUEST_BODY_BYTES,
 };
@@ -1258,8 +1258,31 @@ pub(super) async fn proxy_impl(
                 )
             });
 
-        if let Some(entry) = cached_error.as_ref() {
-            trace_id = entry.trace_id.clone();
+        if let Some(entry) = cached_error {
+            let any_allowed = providers
+                .iter()
+                .any(|p| state.circuit.should_allow(p.id, now_unix).allow);
+            if !any_allowed {
+                trace_id = entry.trace_id.clone();
+                cache.upsert_trace_id(
+                    now_unix,
+                    fingerprint_key,
+                    trace_id.clone(),
+                    fingerprint_debug.clone(),
+                    RECENT_TRACE_DEDUP_TTL_SECS,
+                );
+                return error_response_with_retry_after(
+                    entry.status,
+                    entry.trace_id,
+                    entry.error_code,
+                    entry.message,
+                    vec![],
+                    entry.retry_after_seconds,
+                );
+            }
+
+            cache.remove_error(fingerprint_key);
+            cache.remove_error(unavailable_fingerprint_key);
         } else if let Some(existing) =
             cache.get_trace_id(now_unix, fingerprint_key, &fingerprint_debug)
         {
@@ -1273,22 +1296,6 @@ pub(super) async fn proxy_impl(
             fingerprint_debug.clone(),
             RECENT_TRACE_DEDUP_TTL_SECS,
         );
-
-        if let Some(entry) = cached_error {
-            let any_allowed = providers
-                .iter()
-                .any(|p| state.circuit.should_allow(p.id, now_unix).allow);
-            if !any_allowed {
-                return error_response_with_retry_after(
-                    entry.status,
-                    entry.trace_id,
-                    entry.error_code,
-                    entry.message,
-                    vec![],
-                    entry.retry_after_seconds,
-                );
-            }
-        }
     }
 
     emit_request_start_event(

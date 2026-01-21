@@ -126,6 +126,7 @@ export function ingestTraceStart(payload: GatewayRequestStartEvent) {
 
   const existing = state.traces[idx];
   const nextRequestedModel = payload.requested_model ?? existing.requested_model ?? null;
+  const shouldReset = Boolean(existing.summary);
   const updated: TraceSession = {
     ...existing,
     cli_key: payload.cli_key,
@@ -134,6 +135,7 @@ export function ingestTraceStart(payload: GatewayRequestStartEvent) {
     query: payload.query ?? null,
     requested_model: nextRequestedModel,
     last_seen_ms: now,
+    ...(shouldReset ? { first_seen_ms: now, attempts: [], summary: undefined } : {}),
   };
 
   const nextTraces = state.traces.slice();

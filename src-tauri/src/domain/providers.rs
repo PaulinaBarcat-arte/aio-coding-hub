@@ -226,9 +226,9 @@ fn validate_official_base_urls(cli_key: &str, base_urls: &[String]) -> Result<()
             ));
         }
 
-        let ok = allowed
-            .iter()
-            .any(|allowed_host| host == *allowed_host || host.ends_with(&format!(".{allowed_host}")));
+        let ok = allowed.iter().any(|allowed_host| {
+            host == *allowed_host || host.ends_with(&format!(".{allowed_host}"))
+        });
 
         if !ok {
             return Err(format!(
@@ -649,8 +649,9 @@ pub fn upsert(
     let cli_key = cli_key.trim();
     validate_cli_key(cli_key)?;
 
-    let provider_mode = ProviderMode::parse(provider_mode)
-        .ok_or_else(|| "SEC_INVALID_INPUT: provider_mode must be 'relay' or 'official'".to_string())?;
+    let provider_mode = ProviderMode::parse(provider_mode).ok_or_else(|| {
+        "SEC_INVALID_INPUT: provider_mode must be 'relay' or 'official'".to_string()
+    })?;
 
     let name = name.trim();
     if name.is_empty() {

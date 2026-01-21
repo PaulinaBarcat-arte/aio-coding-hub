@@ -398,7 +398,11 @@ pub(super) fn inject_provider_auth(cli_key: &str, api_key: &str, headers: &mut H
             } else if trimmed.starts_with('{') {
                 serde_json::from_str::<serde_json::Value>(trimmed)
                     .ok()
-                    .and_then(|v| v.get("access_token").and_then(|v| v.as_str()).map(str::to_string))
+                    .and_then(|v| {
+                        v.get("access_token")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string)
+                    })
             } else {
                 None
             };
@@ -409,7 +413,10 @@ pub(super) fn inject_provider_auth(cli_key: &str, api_key: &str, headers: &mut H
                     headers.insert(header::AUTHORIZATION, header_value);
                 }
                 if !headers.contains_key("x-goog-api-client") {
-                    headers.insert("x-goog-api-client", HeaderValue::from_static("GeminiCLI/1.0"));
+                    headers.insert(
+                        "x-goog-api-client",
+                        HeaderValue::from_static("GeminiCLI/1.0"),
+                    );
                 }
             } else if let Ok(header_value) = HeaderValue::from_str(trimmed) {
                 headers.insert("x-goog-api-key", header_value);

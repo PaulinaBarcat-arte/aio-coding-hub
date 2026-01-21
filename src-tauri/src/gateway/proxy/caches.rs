@@ -84,6 +84,10 @@ impl RecentErrorCache {
         self.errors.insert(fingerprint_key, entry);
     }
 
+    pub(super) fn remove_error(&mut self, fingerprint_key: u64) {
+        self.errors.remove(&fingerprint_key);
+    }
+
     pub(super) fn get_trace_id(
         &mut self,
         now_unix: i64,
