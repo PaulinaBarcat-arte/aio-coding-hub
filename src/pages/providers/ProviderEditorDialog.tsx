@@ -172,7 +172,9 @@ function validateOfficialBaseUrls(cliKey: CliKey, baseUrls: string[]) {
       return { ok: false as const, message: `Base URL 格式不合法：${url}` };
     }
 
-    const ok = allowed.some((allowedHost) => host === allowedHost || host.endsWith(`.${allowedHost}`));
+    const ok = allowed.some(
+      (allowedHost) => host === allowedHost || host.endsWith(`.${allowedHost}`)
+    );
     if (!ok) {
       return {
         ok: false as const,
@@ -256,7 +258,8 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
       const prevUrls = prev.map((row) => row.url);
       const nextUrls = next.map((row) => row.url);
       const urlsChanged =
-        prevUrls.length !== nextUrls.length || prevUrls.some((url, index) => url !== nextUrls[index]);
+        prevUrls.length !== nextUrls.length ||
+        prevUrls.some((url, index) => url !== nextUrls[index]);
 
       if (urlsChanged) {
         setBaseUrlsAutofilled(false);
@@ -431,9 +434,7 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
             pingingAll={pingingAll}
             setPingingAll={setPingingAll}
             newRow={newBaseUrlRow}
-            placeholder={
-              providerMode === "relay" ? "中转endpoint" : defaultOfficialBaseUrl(cliKey)
-            }
+            placeholder={providerMode === "relay" ? "中转endpoint" : defaultOfficialBaseUrl(cliKey)}
             disabled={saving}
           />
         </FormField>
