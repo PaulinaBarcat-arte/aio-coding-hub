@@ -42,6 +42,7 @@ import { formatCountdownSeconds, formatUnixSeconds } from "../../utils/formatter
 import { hasTauriRuntime } from "../../services/tauriInvoke";
 import { providerBaseUrlSummary } from "./baseUrl";
 import { ProviderEditorDialog } from "./ProviderEditorDialog";
+import { FlaskConical } from "lucide-react";
 
 const CIRCUIT_EVENT_REFRESH_THROTTLE_MS = 1000;
 
@@ -189,14 +190,7 @@ function SortableProviderCard({
               size="icon"
               title="模型验证"
             >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12l2 2 4-4m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+              <FlaskConical className="h-4 w-4" />
             </Button>
           ) : null}
 
