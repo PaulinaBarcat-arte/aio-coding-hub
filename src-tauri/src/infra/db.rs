@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const DB_FILE_NAME: &str = "aio-coding-hub.db";
-const LATEST_SCHEMA_VERSION: i64 = 27;
+const LATEST_SCHEMA_VERSION: i64 = 28;
 const BUSY_TIMEOUT: Duration = Duration::from_millis(2000);
 
 fn now_unix_seconds() -> i64 {
@@ -117,6 +117,7 @@ fn apply_migrations(conn: &mut Connection) -> Result<(), String> {
             24 => migrate_v24_to_v25(conn)?,
             25 => migrate_v25_to_v26(conn)?,
             26 => migrate_v26_to_v27(conn)?,
+            27 => migrate_v27_to_v28(conn)?,
             v => {
                 return Err(format!(
                     "unsupported sqlite schema version: user_version={v} (expected 0..={LATEST_SCHEMA_VERSION})"
@@ -2001,6 +2002,226 @@ ADD COLUMN provider_mode TEXT NOT NULL DEFAULT 'relay';
     Ok(())
 }
 
+fn migrate_v27_to_v28(conn: &mut Connection) -> Result<(), String> {
+    const VERSION: i64 = 28;
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("failed to start sqlite transaction: {e}"))?;
+
+    // Keep schema_migrations available for troubleshooting/diagnostics.
+    tx.execute_batch(
+        r#"
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version INTEGER PRIMARY KEY,
+  applied_at INTEGER NOT NULL
+);
+"#,
+    )
+    .map_err(|e| format!("failed to migrate v27->v28: {e}"))?;
+
+    let mut has_provider_mode = false;
+    {
+        let mut stmt = tx
+            .prepare("PRAGMA table_info(providers)")
+            .map_err(|e| format!("failed to prepare providers table_info query: {e}"))?;
+        let mut rows = stmt
+            .query([])
+            .map_err(|e| format!("failed to query providers table_info: {e}"))?;
+
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| format!("failed to read providers table_info row: {e}"))?
+        {
+            let name: String = row
+                .get(1)
+                .map_err(|e| format!("failed to read providers column name: {e}"))?;
+            if name == "provider_mode" {
+                has_provider_mode = true;
+                break;
+            }
+        }
+    }
+
+    if has_provider_mode {
+        // Drop official providers entirely (official provider mode is no longer supported).
+        tx.execute("DELETE FROM providers WHERE provider_mode = 'official'", [])
+            .map_err(|e| format!("failed to delete official providers: {e}"))?;
+
+        tx.execute_batch(
+            r#"
+ALTER TABLE providers RENAME TO providers_old;
+ALTER TABLE provider_circuit_breakers RENAME TO provider_circuit_breakers_old;
+ALTER TABLE sort_mode_providers RENAME TO sort_mode_providers_old;
+ALTER TABLE claude_model_validation_runs RENAME TO claude_model_validation_runs_old;
+
+CREATE TABLE providers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cli_key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  base_url TEXT NOT NULL,
+  base_urls_json TEXT NOT NULL DEFAULT '[]',
+  base_url_mode TEXT NOT NULL DEFAULT 'order',
+  claude_models_json TEXT NOT NULL DEFAULT '{}',
+  api_key_plaintext TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  priority INTEGER NOT NULL DEFAULT 100,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  cost_multiplier REAL NOT NULL DEFAULT 1.0,
+  supported_models_json TEXT NOT NULL DEFAULT '{}',
+  model_mapping_json TEXT NOT NULL DEFAULT '{}',
+  UNIQUE(cli_key, name)
+);
+
+INSERT INTO providers(
+  id,
+  cli_key,
+  name,
+  base_url,
+  base_urls_json,
+  base_url_mode,
+  claude_models_json,
+  api_key_plaintext,
+  enabled,
+  priority,
+  created_at,
+  updated_at,
+  sort_order,
+  cost_multiplier,
+  supported_models_json,
+  model_mapping_json
+)
+SELECT
+  id,
+  cli_key,
+  name,
+  base_url,
+  base_urls_json,
+  base_url_mode,
+  claude_models_json,
+  api_key_plaintext,
+  enabled,
+  priority,
+  created_at,
+  updated_at,
+  sort_order,
+  cost_multiplier,
+  supported_models_json,
+  model_mapping_json
+FROM providers_old;
+
+CREATE TABLE provider_circuit_breakers (
+  provider_id INTEGER PRIMARY KEY,
+  state TEXT NOT NULL,
+  failure_count INTEGER NOT NULL DEFAULT 0,
+  open_until INTEGER,
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY(provider_id) REFERENCES providers(id) ON DELETE CASCADE
+);
+
+INSERT INTO provider_circuit_breakers(
+  provider_id,
+  state,
+  failure_count,
+  open_until,
+  updated_at
+)
+SELECT
+  provider_id,
+  state,
+  failure_count,
+  open_until,
+  updated_at
+FROM provider_circuit_breakers_old;
+
+CREATE TABLE sort_mode_providers (
+  mode_id INTEGER NOT NULL,
+  cli_key TEXT NOT NULL,
+  provider_id INTEGER NOT NULL,
+  sort_order INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY(mode_id, cli_key, provider_id),
+  FOREIGN KEY(mode_id) REFERENCES sort_modes(id) ON DELETE CASCADE,
+  FOREIGN KEY(provider_id) REFERENCES providers(id) ON DELETE CASCADE
+);
+
+INSERT INTO sort_mode_providers(
+  mode_id,
+  cli_key,
+  provider_id,
+  sort_order,
+  created_at,
+  updated_at
+)
+SELECT
+  mode_id,
+  cli_key,
+  provider_id,
+  sort_order,
+  created_at,
+  updated_at
+FROM sort_mode_providers_old;
+
+CREATE TABLE claude_model_validation_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  request_json TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  FOREIGN KEY(provider_id) REFERENCES providers(id) ON DELETE CASCADE
+);
+
+INSERT INTO claude_model_validation_runs(
+  id,
+  provider_id,
+  created_at,
+  request_json,
+  result_json
+)
+SELECT
+  id,
+  provider_id,
+  created_at,
+  request_json,
+  result_json
+FROM claude_model_validation_runs_old;
+
+DROP TABLE provider_circuit_breakers_old;
+DROP TABLE sort_mode_providers_old;
+DROP TABLE claude_model_validation_runs_old;
+DROP TABLE providers_old;
+
+CREATE INDEX IF NOT EXISTS idx_providers_cli_key ON providers(cli_key);
+CREATE INDEX IF NOT EXISTS idx_providers_cli_key_sort_order ON providers(cli_key, sort_order);
+CREATE INDEX IF NOT EXISTS idx_provider_circuit_breakers_state ON provider_circuit_breakers(state);
+CREATE INDEX IF NOT EXISTS idx_sort_mode_providers_mode_cli_sort_order
+  ON sort_mode_providers(mode_id, cli_key, sort_order);
+CREATE INDEX IF NOT EXISTS idx_sort_mode_providers_provider_id
+  ON sort_mode_providers(provider_id);
+CREATE INDEX IF NOT EXISTS idx_claude_model_validation_runs_provider_id_id
+  ON claude_model_validation_runs(provider_id, id);
+"#,
+        )
+        .map_err(|e| format!("failed to migrate v27->v28: {e}"))?;
+    }
+
+    let applied_at = now_unix_seconds();
+    tx.execute(
+        "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?1, ?2)",
+        (VERSION, applied_at),
+    )
+    .map_err(|e| format!("failed to record migration: {e}"))?;
+
+    set_user_version(&tx, VERSION)?;
+
+    tx.commit()
+        .map_err(|e| format!("failed to commit migration: {e}"))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2107,5 +2328,262 @@ INSERT INTO providers(
             )
             .expect("read model_mapping_json");
         assert_eq!(model_mapping_json.trim(), "{}");
+    }
+
+    #[test]
+    fn migrate_v27_to_v28_drops_provider_mode_and_deletes_official_providers() {
+        let mut conn = Connection::open_in_memory().expect("open in-memory sqlite");
+        conn.execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("enable foreign_keys");
+
+        conn.execute_batch(
+            r#"
+CREATE TABLE providers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cli_key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  base_url TEXT NOT NULL,
+  base_urls_json TEXT NOT NULL DEFAULT '[]',
+  base_url_mode TEXT NOT NULL DEFAULT 'order',
+  claude_models_json TEXT NOT NULL DEFAULT '{}',
+  api_key_plaintext TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  priority INTEGER NOT NULL DEFAULT 100,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  cost_multiplier REAL NOT NULL DEFAULT 1.0,
+  supported_models_json TEXT NOT NULL DEFAULT '{}',
+  model_mapping_json TEXT NOT NULL DEFAULT '{}',
+  provider_mode TEXT NOT NULL DEFAULT 'relay',
+  UNIQUE(cli_key, name)
+);
+
+CREATE TABLE provider_circuit_breakers (
+  provider_id INTEGER PRIMARY KEY,
+  state TEXT NOT NULL,
+  failure_count INTEGER NOT NULL DEFAULT 0,
+  open_until INTEGER,
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY(provider_id) REFERENCES providers(id) ON DELETE CASCADE
+);
+
+CREATE TABLE sort_modes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(name)
+);
+
+CREATE TABLE sort_mode_providers (
+  mode_id INTEGER NOT NULL,
+  cli_key TEXT NOT NULL,
+  provider_id INTEGER NOT NULL,
+  sort_order INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY(mode_id, cli_key, provider_id),
+  FOREIGN KEY(mode_id) REFERENCES sort_modes(id) ON DELETE CASCADE,
+  FOREIGN KEY(provider_id) REFERENCES providers(id) ON DELETE CASCADE
+);
+
+CREATE TABLE claude_model_validation_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  request_json TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  FOREIGN KEY(provider_id) REFERENCES providers(id) ON DELETE CASCADE
+);
+"#,
+        )
+        .expect("create v27 schema");
+
+        conn.execute(
+            r#"
+INSERT INTO providers(
+  id,
+  cli_key,
+  name,
+  base_url,
+  base_urls_json,
+  base_url_mode,
+  claude_models_json,
+  api_key_plaintext,
+  enabled,
+  priority,
+  created_at,
+  updated_at,
+  sort_order,
+  cost_multiplier,
+  supported_models_json,
+  model_mapping_json,
+  provider_mode
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+"#,
+            rusqlite::params![
+                1i64,
+                "codex",
+                "relay",
+                "https://relay.example.com/v1",
+                "[\"https://relay.example.com/v1\"]",
+                "order",
+                "{}",
+                "sk-relay",
+                1i64,
+                100i64,
+                1i64,
+                1i64,
+                0i64,
+                1.0f64,
+                "{}",
+                "{}",
+                "relay",
+            ],
+        )
+        .expect("insert relay provider");
+
+        conn.execute(
+            r#"
+INSERT INTO providers(
+  id,
+  cli_key,
+  name,
+  base_url,
+  base_urls_json,
+  base_url_mode,
+  claude_models_json,
+  api_key_plaintext,
+  enabled,
+  priority,
+  created_at,
+  updated_at,
+  sort_order,
+  cost_multiplier,
+  supported_models_json,
+  model_mapping_json,
+  provider_mode
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+"#,
+            rusqlite::params![
+                2i64,
+                "codex",
+                "official",
+                "https://api.openai.com/v1",
+                "[\"https://api.openai.com/v1\"]",
+                "order",
+                "{}",
+                "",
+                1i64,
+                100i64,
+                1i64,
+                1i64,
+                1i64,
+                1.0f64,
+                "{}",
+                "{}",
+                "official",
+            ],
+        )
+        .expect("insert official provider");
+
+        conn.execute(
+            "INSERT INTO provider_circuit_breakers(provider_id, state, failure_count, open_until, updated_at) VALUES (?1, 'CLOSED', 0, NULL, 1)",
+            rusqlite::params![1i64],
+        )
+        .expect("insert relay breaker");
+        conn.execute(
+            "INSERT INTO provider_circuit_breakers(provider_id, state, failure_count, open_until, updated_at) VALUES (?1, 'CLOSED', 0, NULL, 1)",
+            rusqlite::params![2i64],
+        )
+        .expect("insert official breaker");
+
+        conn.execute(
+            "INSERT INTO sort_modes(id, name, created_at, updated_at) VALUES (1, 'mode', 1, 1)",
+            [],
+        )
+        .expect("insert sort mode");
+        conn.execute(
+            "INSERT INTO sort_mode_providers(mode_id, cli_key, provider_id, sort_order, created_at, updated_at) VALUES (1, 'codex', 1, 0, 1, 1)",
+            [],
+        )
+        .expect("insert relay sort_mode_provider");
+        conn.execute(
+            "INSERT INTO sort_mode_providers(mode_id, cli_key, provider_id, sort_order, created_at, updated_at) VALUES (1, 'codex', 2, 1, 1, 1)",
+            [],
+        )
+        .expect("insert official sort_mode_provider");
+
+        conn.execute(
+            "INSERT INTO claude_model_validation_runs(id, provider_id, created_at, request_json, result_json) VALUES (1, 1, 1, '{}', '{}')",
+            [],
+        )
+        .expect("insert relay validation run");
+        conn.execute(
+            "INSERT INTO claude_model_validation_runs(id, provider_id, created_at, request_json, result_json) VALUES (2, 2, 1, '{}', '{}')",
+            [],
+        )
+        .expect("insert official validation run");
+
+        migrate_v27_to_v28(&mut conn).expect("migrate v27->v28");
+
+        let user_version: i64 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user_version");
+        assert_eq!(user_version, 28);
+
+        let provider_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM providers", [], |row| row.get(0))
+            .expect("count providers");
+        assert_eq!(provider_count, 1);
+
+        let breaker_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM provider_circuit_breakers",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count breakers");
+        assert_eq!(breaker_count, 1);
+
+        let sort_mode_provider_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sort_mode_providers", [], |row| {
+                row.get(0)
+            })
+            .expect("count sort_mode_providers");
+        assert_eq!(sort_mode_provider_count, 1);
+
+        let validation_run_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM claude_model_validation_runs",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count validation runs");
+        assert_eq!(validation_run_count, 1);
+
+        let remaining_name: String = conn
+            .query_row("SELECT name FROM providers WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("read remaining provider name");
+        assert_eq!(remaining_name, "relay");
+
+        let mut has_provider_mode = false;
+        {
+            let mut stmt = conn
+                .prepare("PRAGMA table_info(providers)")
+                .expect("prepare providers table_info query");
+            let mut rows = stmt.query([]).expect("query providers table_info");
+            while let Some(row) = rows.next().expect("read table_info row") {
+                let name: String = row.get(1).expect("read column name");
+                if name == "provider_mode" {
+                    has_provider_mode = true;
+                    break;
+                }
+            }
+        }
+        assert!(!has_provider_mode);
     }
 }

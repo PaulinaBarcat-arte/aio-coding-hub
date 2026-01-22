@@ -157,7 +157,6 @@ pub fn run() {
             gateway_sessions_list,
             providers_list,
             provider_upsert,
-            provider_guess_cli_token,
             provider_set_enabled,
             provider_delete,
             providers_reorder,

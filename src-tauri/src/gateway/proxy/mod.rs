@@ -1709,20 +1709,8 @@ pub(super) async fn proxy_impl(
             let mut headers = base_headers.clone();
             ensure_cli_required_headers(&cli_key, &mut headers);
 
-            match provider.provider_mode {
-                crate::providers::ProviderMode::Official => {
-                    // Official: allow passthrough when api_key is empty (e.g. OAuth login on the CLI side).
-                    let api_key = provider.api_key_plaintext.trim();
-                    if !api_key.is_empty() {
-                        inject_provider_auth(&cli_key, api_key, &mut headers);
-                    }
-                }
-                crate::providers::ProviderMode::Relay => {
-                    // Relay: ALWAYS override auth headers to avoid leaking any official OAuth tokens
-                    // to a third-party relay base_url.
-                    inject_provider_auth(&cli_key, provider.api_key_plaintext.trim(), &mut headers);
-                }
-            }
+            // Always override auth headers to avoid leaking any official OAuth tokens to a third-party relay base_url.
+            inject_provider_auth(&cli_key, provider.api_key_plaintext.trim(), &mut headers);
             if strip_request_content_encoding {
                 headers.remove(header::CONTENT_ENCODING);
             }
