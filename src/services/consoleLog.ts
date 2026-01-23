@@ -12,25 +12,58 @@ export type ConsoleLogMeta = {
 export type ConsoleLogEntry = {
   id: string;
   ts: number;
+  tsText: string;
   level: ConsoleLogLevel;
   title: string;
-  details?: string;
+  details?: unknown;
   meta?: ConsoleLogMeta;
 };
 
 type Listener = () => void;
 
+const MAX_ENTRIES = 500;
+
 let entries: ConsoleLogEntry[] = [];
 const listeners = new Set<Listener>();
+let emitScheduled = false;
 
 function emit() {
   for (const listener of listeners) listener();
+}
+
+function scheduleEmit() {
+  if (emitScheduled) return;
+  emitScheduled = true;
+  const run = () => {
+    emitScheduled = false;
+    emit();
+  };
+  if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(run);
+    return;
+  }
+  if (typeof queueMicrotask === "function") {
+    queueMicrotask(run);
+    return;
+  }
+  setTimeout(run, 0);
 }
 
 function randomId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function pad2(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function formatTsText(ts: number) {
+  const date = new Date(ts);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(
+    date.getHours()
+  )}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 }
 
 function isSensitiveKey(key: string): boolean {
@@ -67,14 +100,27 @@ function sanitizeDetails(value: unknown, seen: WeakSet<object>, depth: number): 
   return out;
 }
 
-function toDetails(value: unknown): string | undefined {
+function redactDetails(value: unknown): unknown | undefined {
   if (value === undefined) return undefined;
   if (typeof value === "string") return value;
   try {
-    const sanitized = sanitizeDetails(value, new WeakSet(), 0);
-    return JSON.stringify(sanitized, null, 2);
+    return sanitizeDetails(value, new WeakSet(), 0);
   } catch {
     return String(value);
+  }
+}
+
+export function formatConsoleLogDetails(details: unknown): string | undefined {
+  if (details === undefined) return undefined;
+  if (details === null) return "null";
+  if (typeof details === "string") return details;
+  if (typeof details === "number" || typeof details === "boolean" || typeof details === "bigint") {
+    return String(details);
+  }
+  try {
+    return JSON.stringify(details, null, 2);
+  } catch {
+    return String(details);
   }
 }
 
@@ -144,22 +190,25 @@ function extractMeta(details: unknown): ConsoleLogMeta | undefined {
 }
 
 export function logToConsole(level: ConsoleLogLevel, title: string, details?: unknown) {
+  const ts = Date.now();
+  const detailsRedacted = redactDetails(details);
   const entry: ConsoleLogEntry = {
     id: randomId(),
-    ts: Date.now(),
+    ts,
+    tsText: formatTsText(ts),
     level,
     title,
-    details: toDetails(details),
-    meta: extractMeta(details),
+    details: detailsRedacted,
+    meta: extractMeta(detailsRedacted),
   };
 
-  entries = [entry, ...entries].slice(0, 500);
-  emit();
+  entries = [...entries, entry].slice(-MAX_ENTRIES);
+  scheduleEmit();
 }
 
 export function clearConsoleLogs() {
   entries = [];
-  emit();
+  scheduleEmit();
 }
 
 export function useConsoleLogs() {

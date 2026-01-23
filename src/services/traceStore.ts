@@ -20,9 +20,6 @@ export type TraceSession = {
 
 export type TraceStoreSnapshot = {
   traces: TraceSession[];
-  selectedTraceId: string | null;
-  searchTraceId: string;
-  maxTraces: number;
 };
 
 type Listener = () => void;
@@ -32,21 +29,14 @@ const MAX_ATTEMPTS_PER_TRACE = 100;
 
 type TraceStoreState = {
   traces: TraceSession[];
-  selectedTraceId: string | null;
-  searchTraceId: string;
 };
 
 let state: TraceStoreState = {
   traces: [],
-  selectedTraceId: null,
-  searchTraceId: "",
 };
 
 let snapshot: TraceStoreSnapshot = {
   traces: state.traces,
-  selectedTraceId: state.selectedTraceId,
-  searchTraceId: state.searchTraceId,
-  maxTraces: MAX_TRACES,
 };
 
 const listeners = new Set<Listener>();
@@ -59,9 +49,6 @@ function setState(next: TraceStoreState) {
   state = next;
   snapshot = {
     traces: state.traces,
-    selectedTraceId: state.selectedTraceId,
-    searchTraceId: state.searchTraceId,
-    maxTraces: MAX_TRACES,
   };
   emit();
 }
@@ -78,13 +65,6 @@ function upsertAttempt(
   next.push(payload);
   next.sort((a, b) => a.attempt_index - b.attempt_index);
   return next.slice(-MAX_ATTEMPTS_PER_TRACE);
-}
-
-function selectFallbackIfNeeded(nextTraces: TraceSession[]) {
-  const selected = state.selectedTraceId;
-  if (!selected) return state.selectedTraceId;
-  const stillExists = nextTraces.some((t) => t.trace_id === selected);
-  return stillExists ? selected : (nextTraces[0]?.trace_id ?? null);
 }
 
 function moveTraceToFront(nextTraces: TraceSession[], traceId: string) {
@@ -116,11 +96,7 @@ export function ingestTraceStart(payload: GatewayRequestStartEvent) {
     };
 
     const nextTraces = [created, ...state.traces].slice(0, MAX_TRACES);
-    setState({
-      ...state,
-      traces: nextTraces,
-      selectedTraceId: state.selectedTraceId ?? created.trace_id,
-    });
+    setState({ traces: nextTraces });
     return;
   }
 
@@ -142,11 +118,7 @@ export function ingestTraceStart(payload: GatewayRequestStartEvent) {
   nextTraces[idx] = updated;
   moveTraceToFront(nextTraces, updated.trace_id);
 
-  setState({
-    ...state,
-    traces: nextTraces.slice(0, MAX_TRACES),
-    selectedTraceId: selectFallbackIfNeeded(nextTraces),
-  });
+  setState({ traces: nextTraces.slice(0, MAX_TRACES) });
 }
 
 export function ingestTraceAttempt(payload: GatewayAttemptEvent) {
@@ -169,11 +141,7 @@ export function ingestTraceAttempt(payload: GatewayAttemptEvent) {
     };
 
     const nextTraces = [created, ...state.traces].slice(0, MAX_TRACES);
-    setState({
-      ...state,
-      traces: nextTraces,
-      selectedTraceId: state.selectedTraceId ?? created.trace_id,
-    });
+    setState({ traces: nextTraces });
     return;
   }
 
@@ -192,11 +160,7 @@ export function ingestTraceAttempt(payload: GatewayAttemptEvent) {
   nextTraces[idx] = updated;
   moveTraceToFront(nextTraces, updated.trace_id);
 
-  setState({
-    ...state,
-    traces: nextTraces.slice(0, MAX_TRACES),
-    selectedTraceId: selectFallbackIfNeeded(nextTraces),
-  });
+  setState({ traces: nextTraces.slice(0, MAX_TRACES) });
 }
 
 export function ingestTraceRequest(payload: GatewayRequestEvent) {
@@ -220,11 +184,7 @@ export function ingestTraceRequest(payload: GatewayRequestEvent) {
     };
 
     const nextTraces = [created, ...state.traces].slice(0, MAX_TRACES);
-    setState({
-      ...state,
-      traces: nextTraces,
-      selectedTraceId: state.selectedTraceId ?? created.trace_id,
-    });
+    setState({ traces: nextTraces });
     return;
   }
 
@@ -243,21 +203,7 @@ export function ingestTraceRequest(payload: GatewayRequestEvent) {
   nextTraces[idx] = updated;
   moveTraceToFront(nextTraces, updated.trace_id);
 
-  setState({
-    ...state,
-    traces: nextTraces.slice(0, MAX_TRACES),
-    selectedTraceId: selectFallbackIfNeeded(nextTraces),
-  });
-}
-
-export function setSelectedTraceId(traceId: string | null) {
-  if (traceId === state.selectedTraceId) return;
-  setState({ ...state, selectedTraceId: traceId });
-}
-
-export function setSearchTraceId(value: string) {
-  if (value === state.searchTraceId) return;
-  setState({ ...state, searchTraceId: value });
+  setState({ traces: nextTraces.slice(0, MAX_TRACES) });
 }
 
 export function useTraceStore(): TraceStoreSnapshot {
