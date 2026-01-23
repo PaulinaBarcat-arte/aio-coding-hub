@@ -6,7 +6,6 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
 
 const LOG_SUBDIR: &str = "logs";
 const LOG_FILE_PREFIX: &str = "aio-coding-hub.log";
@@ -36,9 +35,6 @@ fn init_impl(app: &tauri::AppHandle) -> Result<(), String> {
     let log_dir = ensure_log_dir(app)?;
     let env_filter = default_env_filter();
 
-    // Capture `log` crate records (from dependencies) into `tracing` if possible.
-    let _ = tracing_log::LogTracer::init();
-
     let file_appender = tracing_appender::rolling::daily(&log_dir, LOG_FILE_PREFIX);
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
     TRACING_GUARD
@@ -64,20 +60,19 @@ fn init_impl(app: &tauri::AppHandle) -> Result<(), String> {
         .with_file(true)
         .with_line_number(true);
 
-    #[cfg(debug_assertions)]
-    tracing_subscriber::registry()
+    let subscriber = tracing_subscriber::registry()
         .with(env_filter)
-        .with(file_layer)
-        .with(stdout_layer)
-        .try_init()
+        .with(file_layer);
+
+    #[cfg(debug_assertions)]
+    let subscriber = subscriber.with(stdout_layer);
+
+    tracing::subscriber::set_global_default(subscriber)
         .map_err(|e| format!("failed to set global tracing subscriber: {e}"))?;
 
-    #[cfg(not(debug_assertions))]
-    tracing_subscriber::registry()
-        .with(env_filter)
-        .with(file_layer)
-        .try_init()
-        .map_err(|e| format!("failed to set global tracing subscriber: {e}"))?;
+    // Capture `log` crate records (from dependencies) into `tracing` when possible.
+    // If another logger is already set (e.g. by a dependency), skip silently.
+    let _ = tracing_log::LogTracer::init();
 
     tracing::info!(log_dir = %log_dir.display(), "tracing initialized");
 

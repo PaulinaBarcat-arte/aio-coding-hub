@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { toast } from "sonner";
 import type { AppSettings } from "../../../services/settings";
 import type { GatewayRectifierSettingsPatch } from "../../../services/settingsGatewayRectifier";
@@ -9,9 +9,6 @@ import { Switch } from "../../../ui/Switch";
 import { NetworkSettingsCard } from "../NetworkSettingsCard";
 import { WslSettingsCard } from "../WslSettingsCard";
 import { AlertTriangle, Shield } from "lucide-react";
-
-const RESPONSE_FIXER_MAX_JSON_DEPTH_MAX = 2000;
-const RESPONSE_FIXER_MAX_FIX_SIZE_MAX = 16 * 1024 * 1024;
 
 export type CliManagerAvailability = "checking" | "available" | "unavailable";
 
@@ -82,21 +79,6 @@ export function CliManagerGeneralTab({
   setCircuitBreakerOpenDurationMinutes,
   blurOnEnter,
 }: CliManagerGeneralTabProps) {
-  const [responseFixerMaxJsonDepthText, setResponseFixerMaxJsonDepthText] = useState(() =>
-    String(rectifier.response_fixer_max_json_depth)
-  );
-  const [responseFixerMaxFixSizeText, setResponseFixerMaxFixSizeText] = useState(() =>
-    String(rectifier.response_fixer_max_fix_size)
-  );
-
-  useEffect(() => {
-    setResponseFixerMaxJsonDepthText(String(rectifier.response_fixer_max_json_depth));
-  }, [rectifier.response_fixer_max_json_depth]);
-
-  useEffect(() => {
-    setResponseFixerMaxFixSizeText(String(rectifier.response_fixer_max_fix_size));
-  }, [rectifier.response_fixer_max_fix_size]);
-
   return (
     <div className="space-y-6">
       <div className="grid gap-6 md:grid-cols-2">
@@ -177,64 +159,6 @@ export function CliManagerGeneralTab({
                           }
                           disabled={rectifierSaving || rectifierAvailable !== "available"}
                         />
-                      </SettingsRow>
-                      <SettingsRow label="最大 JSON 深度">
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="number"
-                            value={responseFixerMaxJsonDepthText}
-                            onChange={(e) =>
-                              setResponseFixerMaxJsonDepthText(e.currentTarget.value)
-                            }
-                            onBlur={() => {
-                              const max = RESPONSE_FIXER_MAX_JSON_DEPTH_MAX;
-                              const next = Math.floor(Number(responseFixerMaxJsonDepthText));
-                              if (!Number.isFinite(next) || next < 1 || next > max) {
-                                toast(`最大 JSON 深度必须为 1-${max}`);
-                                setResponseFixerMaxJsonDepthText(
-                                  String(rectifier.response_fixer_max_json_depth)
-                                );
-                                return;
-                              }
-                              if (next === rectifier.response_fixer_max_json_depth) return;
-                              void onPersistRectifier({ response_fixer_max_json_depth: next });
-                            }}
-                            onKeyDown={blurOnEnter}
-                            className="w-28"
-                            min={1}
-                            max={RESPONSE_FIXER_MAX_JSON_DEPTH_MAX}
-                            disabled={rectifierSaving || rectifierAvailable !== "available"}
-                          />
-                          <span className="text-xs text-slate-500">默认 200</span>
-                        </div>
-                      </SettingsRow>
-                      <SettingsRow label="最大修复字节数">
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="number"
-                            value={responseFixerMaxFixSizeText}
-                            onChange={(e) => setResponseFixerMaxFixSizeText(e.currentTarget.value)}
-                            onBlur={() => {
-                              const max = RESPONSE_FIXER_MAX_FIX_SIZE_MAX;
-                              const next = Math.floor(Number(responseFixerMaxFixSizeText));
-                              if (!Number.isFinite(next) || next < 1 || next > max) {
-                                toast(`最大修复字节数必须为 1-${max}`);
-                                setResponseFixerMaxFixSizeText(
-                                  String(rectifier.response_fixer_max_fix_size)
-                                );
-                                return;
-                              }
-                              if (next === rectifier.response_fixer_max_fix_size) return;
-                              void onPersistRectifier({ response_fixer_max_fix_size: next });
-                            }}
-                            onKeyDown={blurOnEnter}
-                            className="w-40"
-                            min={1}
-                            max={RESPONSE_FIXER_MAX_FIX_SIZE_MAX}
-                            disabled={rectifierSaving || rectifierAvailable !== "available"}
-                          />
-                          <span className="text-xs text-slate-500">字节</span>
-                        </div>
                       </SettingsRow>
                     </div>
                   )}
