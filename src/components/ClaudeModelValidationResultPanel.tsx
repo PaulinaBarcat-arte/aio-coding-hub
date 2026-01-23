@@ -371,6 +371,7 @@ export function ClaudeModelValidationResultPanel({ templateKey, result }: Props)
 
   const {
     outputChars: outputCheck,
+    outputTokens: outputTokensCheck,
     cacheDetail: cacheDetailCheck,
     sseStopReasonMaxTokens: sseStopReasonMaxTokensCheck,
     modelConsistency: modelConsistencyCheck,
@@ -388,21 +389,6 @@ export function ClaudeModelValidationResultPanel({ templateKey, result }: Props)
   } = evaluation.checks;
 
   const outputExpectation = getClaudeValidationOutputExpectation(evaluation.template);
-
-  const expectedMaxTokens = (() => {
-    const v = get<number>(evaluation.template.request.body as unknown, "max_tokens");
-    return typeof v === "number" && Number.isFinite(v) ? v : null;
-  })();
-  const requestedMaxTokens = (() => {
-    const req = (result as any)?.request as unknown;
-    const body = get<unknown>(req, "body") ?? req;
-    const v = get<number>(body, "max_tokens");
-    return typeof v === "number" && Number.isFinite(v) ? v : null;
-  })();
-  const maxTokensConfigOk =
-    expectedMaxTokens != null && requestedMaxTokens != null
-      ? requestedMaxTokens === expectedMaxTokens
-      : null;
 
   const shouldShowSseStopReasonRow =
     evaluation.template.key === "official_max_tokens_5" || requireSseStopReasonMaxTokens;
@@ -798,32 +784,15 @@ export function ClaudeModelValidationResultPanel({ templateKey, result }: Props)
             <div className="space-y-1">
               {evaluation.template.key === "official_max_tokens_5" ? (
                 <>
-                  <CheckRow
-                    label={`请求 max_tokens=${expectedMaxTokens ?? "—"}`}
-                    ok={maxTokensConfigOk === true}
-                    required={true}
-                    value={requestedMaxTokens ?? "—"}
-                    helpText={[
-                      "验证点：请求体 max_tokens 是否按模板配置发送。",
-                      "说明：部分兼容层会忽略/重写 max_tokens；该项用于诊断“模板未生效 vs 上游未按 max_tokens 截断”。",
-                      `观测：request.body.max_tokens=${requestedMaxTokens ?? "—"}; expected=${expectedMaxTokens ?? "—"}`,
-                    ].join("\n")}
-                  />
-                  <CheckRow
-                    label={`输出 tokens≤${expectedMaxTokens ?? "—"}`}
-                    ok={
-                      typeof outputTokens === "number" && expectedMaxTokens != null
-                        ? outputTokens <= expectedMaxTokens
-                        : undefined
-                    }
-                    required={typeof outputTokens === "number"}
-                    value={typeof outputTokens === "number" ? outputTokens : "—"}
-                    helpText={[
-                      "验证点：usage.output_tokens 是否不超过 max_tokens。",
-                      "说明：output_tokens 是更直接的 token 口径；若缺失则仅作为可选诊断项展示。",
-                      `观测：output_tokens=${typeof outputTokens === "number" ? outputTokens : "—"}; max_tokens=${expectedMaxTokens ?? "—"}`,
-                    ].join("\n")}
-                  />
+                  {outputTokensCheck ? (
+                    <CheckRow
+                      label={outputTokensCheck.label}
+                      ok={outputTokensCheck.ok}
+                      required={true}
+                      value={typeof outputTokens === "number" ? outputTokens : "—"}
+                      helpText={outputTokensCheck.title}
+                    />
+                  ) : null}
                 </>
               ) : null}
               {shouldShowSseStopReasonRow && sseStopReasonMaxTokensCheck ? (

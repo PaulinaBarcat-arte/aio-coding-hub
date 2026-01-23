@@ -76,6 +76,108 @@ fn take_first_n_chars(s: &str, n: usize) -> String {
 
 const MAX_ROUNDTRIP_THINKING_CHARS: usize = 120_000;
 const MAX_ROUNDTRIP_SIGNATURE_CHARS: usize = 24_000;
+const MAX_SSE_ERROR_MESSAGE_CHARS: usize = 2000;
+
+fn parse_sse_error_details_json(details: &serde_json::Value) -> Option<serde_json::Value> {
+    if let Some(s) = details.as_str() {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        return serde_json::from_str::<serde_json::Value>(trimmed).ok();
+    }
+    if details.is_object() || details.is_array() {
+        return Some(details.clone());
+    }
+    None
+}
+
+fn format_sse_error_message(data: &serde_json::Value) -> String {
+    let status = data
+        .get("status")
+        .and_then(|v| v.as_u64())
+        .and_then(|v| u16::try_from(v).ok());
+
+    let mut err_type: Option<String> = None;
+    let mut err_message: Option<String> = None;
+    let mut request_id: Option<String> = None;
+
+    if let Some(details) = data.get("details").and_then(parse_sse_error_details_json) {
+        if let Some(t) = details
+            .get("error")
+            .and_then(|v| v.get("type"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            err_type = Some(t.to_string());
+        }
+        if let Some(m) = details
+            .get("error")
+            .and_then(|v| v.get("message"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            err_message = Some(m.to_string());
+        }
+        if let Some(rid) = details
+            .get("request_id")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            request_id = Some(rid.to_string());
+        }
+    }
+
+    if err_message.is_none() {
+        if let Some(m) = data
+            .get("message")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            err_message = Some(m.to_string());
+        }
+    }
+
+    let mut summary = String::new();
+    if let Some(t) = err_type.as_deref() {
+        summary.push_str(t);
+    }
+    if let Some(m) = err_message.as_deref() {
+        if !summary.is_empty() {
+            summary.push_str(": ");
+        }
+        summary.push_str(m);
+    }
+
+    if summary.trim().is_empty() {
+        if let Some(raw) = data
+            .get("error")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            summary = raw.to_string();
+        }
+    }
+    if summary.trim().is_empty() {
+        summary = "SSE error event".to_string();
+    }
+
+    if let Some(rid) = request_id.as_deref() {
+        summary.push_str(&format!(" (request_id={rid})"));
+    }
+
+    if let Some(status) = status {
+        summary = format!("status={status}; {summary}");
+    }
+
+    let summary = take_first_n_chars(&summary, MAX_SSE_ERROR_MESSAGE_CHARS);
+    format!("UPSTREAM_SSE_ERROR: {summary}")
+}
 
 #[derive(Default)]
 pub(super) struct SseTextAccumulator {
@@ -96,6 +198,9 @@ pub(super) struct SseTextAccumulator {
     pub(super) message_delta_stop_reason_is_max_tokens: bool,
     pub(super) response_id: String,
     pub(super) service_tier: String,
+    pub(super) error_event_seen: bool,
+    pub(super) error_status: Option<u16>,
+    pub(super) error_message: String,
 
     current_thinking_block_index: Option<i64>,
     capturing_thinking_block: bool,
@@ -310,6 +415,22 @@ impl SseTextAccumulator {
             .unwrap_or("")
             .trim();
         let block_index = data.get("index").and_then(|v| v.as_i64());
+
+        if event_name == "error" || data_type == "error" {
+            self.error_event_seen = true;
+
+            if self.error_status.is_none() {
+                self.error_status = data
+                    .get("status")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|v| u16::try_from(v).ok());
+            }
+
+            if self.error_message.trim().is_empty() {
+                self.error_message = format_sse_error_message(data);
+            }
+            return;
+        }
 
         if data_type == "content_block_start" {
             if let Some(block) = data.get("content_block").and_then(|v| v.as_object()) {
@@ -823,5 +944,26 @@ mod tests {
         assert_eq!(acc.signature_full, "SIG_PART_1SIG_PART_2");
         assert!(acc.signature_from_delta);
         assert_eq!(acc.signature_chars, "SIG_PART_1SIG_PART_2".chars().count());
+    }
+
+    #[test]
+    fn sse_error_event_is_detected() {
+        let mut acc = SseTextAccumulator::default();
+        let sse = concat!(
+            "event: error\n",
+            "data: {\"error\":\"Claude API error\",\"status\":400,\"details\":\"{\\\"type\\\":\\\"error\\\",\\\"error\\\":{\\\"type\\\":\\\"invalid_request_error\\\",\\\"message\\\":\\\"This model does not support the effort parameter.\\\"},\\\"request_id\\\":\\\"req_123\\\"}\"}\n",
+            "\n",
+        );
+
+        acc.ingest_chunk(sse.as_bytes());
+        acc.finalize();
+
+        assert!(acc.error_event_seen);
+        assert_eq!(acc.error_status, Some(400));
+        assert!(acc.error_message.contains("invalid_request_error"));
+        assert!(acc
+            .error_message
+            .contains("This model does not support the effort parameter."));
+        assert!(acc.error_message.contains("request_id=req_123"));
     }
 }

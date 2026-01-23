@@ -95,6 +95,9 @@ struct StepOutcome {
     sse_message_delta_seen: bool,
     sse_message_delta_stop_reason: Option<String>,
     sse_message_delta_stop_reason_is_max_tokens: bool,
+    sse_error_event_seen: bool,
+    sse_error_status: Option<u16>,
+    sse_error_message: String,
     response_id: Option<String>,
     service_tier: Option<String>,
     response_headers: serde_json::Value,
@@ -290,6 +293,9 @@ async fn perform_request(
                 sse_message_delta_seen: false,
                 sse_message_delta_stop_reason: None,
                 sse_message_delta_stop_reason_is_max_tokens: false,
+                sse_error_event_seen: false,
+                sse_error_status: None,
+                sse_error_message: String::new(),
                 response_id: None,
                 service_tier: None,
                 response_headers: serde_json::json!({}),
@@ -339,6 +345,9 @@ async fn perform_request(
             sse_message_delta_seen: false,
             sse_message_delta_stop_reason: None,
             sse_message_delta_stop_reason_is_max_tokens: false,
+            sse_error_event_seen: false,
+            sse_error_status: None,
+            sse_error_message: String::new(),
             response_id: None,
             service_tier: None,
             response_headers: serde_json::json!({}),
@@ -385,6 +394,9 @@ async fn perform_request(
         sse_message_delta_seen,
         sse_message_delta_stop_reason,
         sse_message_delta_stop_reason_is_max_tokens,
+        sse_error_event_seen,
+        sse_error_status,
+        sse_error_message,
         response_id,
         service_tier,
     ) = if is_sse_by_header {
@@ -438,6 +450,9 @@ async fn perform_request(
             text_tracker.message_delta_seen,
             text_tracker.message_delta_stop_reason.clone(),
             text_tracker.message_delta_stop_reason_is_max_tokens,
+            text_tracker.error_event_seen,
+            text_tracker.error_status,
+            text_tracker.error_message.clone(),
             if text_tracker.response_id.trim().is_empty() {
                 None
             } else {
@@ -503,6 +518,9 @@ async fn perform_request(
                 false,
                 None,
                 false,
+                false,
+                None,
+                String::new(),
                 resp_id,
                 service_tier,
             )
@@ -534,6 +552,9 @@ async fn perform_request(
                 text_tracker.message_delta_seen,
                 text_tracker.message_delta_stop_reason.clone(),
                 text_tracker.message_delta_stop_reason_is_max_tokens,
+                text_tracker.error_event_seen,
+                text_tracker.error_status,
+                text_tracker.error_message.clone(),
                 if text_tracker.response_id.trim().is_empty() {
                     None
                 } else {
@@ -561,6 +582,9 @@ async fn perform_request(
                 false,
                 None,
                 false,
+                false,
+                None,
+                String::new(),
                 None,
                 None,
             )
@@ -569,10 +593,36 @@ async fn perform_request(
 
     let raw_excerpt_text = String::from_utf8_lossy(&raw_excerpt).to_string();
 
-    let http_ok = (200..300).contains(&status);
+    let mut status_out = status;
+    if sse_error_event_seen && (200..300).contains(&status_out) {
+        if let Some(s) = sse_error_status {
+            status_out = s;
+        }
+    }
+
+    if sse_error_event_seen {
+        let sse_msg = if sse_error_message.trim().is_empty() {
+            if let Some(s) = sse_error_status {
+                format!("UPSTREAM_SSE_ERROR: status={s}")
+            } else {
+                "UPSTREAM_SSE_ERROR".to_string()
+            }
+        } else {
+            sse_error_message.clone()
+        };
+
+        err_out = match err_out {
+            Some(existing) if !existing.trim().is_empty() && existing.trim() != sse_msg => {
+                Some(format!("{existing}; {sse_msg}"))
+            }
+            _ => Some(sse_msg),
+        };
+    }
+
+    let http_ok = (200..300).contains(&status_out);
     let has_body_bytes = total_read > 0;
     let no_stream_read_error = stream_read_error.is_none();
-    let ok = http_ok && has_body_bytes && no_stream_read_error;
+    let ok = http_ok && has_body_bytes && no_stream_read_error && !sse_error_event_seen;
 
     if err_out.is_none() {
         err_out = stream_read_error.clone();
@@ -581,12 +631,12 @@ async fn perform_request(
         err_out = Some("EMPTY_RESPONSE_BODY".to_string());
     }
     if !http_ok && err_out.is_none() {
-        err_out = Some(format!("UPSTREAM_ERROR: status={status}"));
+        err_out = Some(format!("UPSTREAM_ERROR: status={status_out}"));
     }
 
     StepOutcome {
         ok,
-        status: Some(status),
+        status: Some(status_out),
         duration_ms: started.elapsed().as_millis().min(i64::MAX as u128) as i64,
         responded_model,
         usage_json_value,
@@ -602,6 +652,9 @@ async fn perform_request(
         sse_message_delta_seen,
         sse_message_delta_stop_reason,
         sse_message_delta_stop_reason_is_max_tokens,
+        sse_error_event_seen,
+        sse_error_status,
+        sse_error_message,
         response_id,
         service_tier,
         response_headers,
@@ -825,6 +878,9 @@ pub async fn validate_provider_model(
         "sse_message_delta_seen": step1.sse_message_delta_seen,
         "sse_message_delta_stop_reason": step1.sse_message_delta_stop_reason,
         "sse_message_delta_stop_reason_is_max_tokens": step1.sse_message_delta_stop_reason_is_max_tokens,
+        "sse_error_event_seen": step1.sse_error_event_seen,
+        "sse_error_status": step1.sse_error_status.map(|s| s as i64),
+        "sse_error_message": step1.sse_error_message,
     });
     if let Some(max_chars) = parsed.expect_max_output_chars {
         if let Some(obj) = checks.as_object_mut() {

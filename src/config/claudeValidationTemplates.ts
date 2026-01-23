@@ -2,20 +2,15 @@ export const CLAUDE_VALIDATION_TEMPLATES = [
   {
     key: "official_max_tokens_5",
     label: "官方渠道（max_tokens=5 + cache_creation）",
-    hint: "验证 max_tokens=5 是否生效（旧口径：输出字符数<=5；stop_reason=max_tokens 属于更强信号但不作为必须条件）；并观察 id / service_tier / cache_creation 等字段（注意：prompt caching 明细需满足最小 cacheable prompt 长度，详见 caching roundtrip 模板）",
+    hint: "验证 max_tokens=5 是否生效（以 usage.output_tokens<=5 为主；stop_reason=max_tokens 属于更强信号但不作为必须条件）；并观察 id / service_tier / cache_creation 等字段（注意：prompt caching 明细需满足最小 cacheable prompt 长度，详见 caching roundtrip 模板）",
     channelLabel: "官方渠道",
-    summary: "验证maxToken是否生效, 结果是否对齐",
+    summary: "验证 max_tokens 是否生效（token 口径）",
     request: {
       path: "/v1/messages",
       query: "beta=true",
       headers: {
         // max_tokens=5 验证：不强依赖 interleaved thinking beta，避免中转/兼容层因未知 beta 直接报错。
         "anthropic-beta": "claude-code-20250219",
-      },
-      expect: {
-        // 旧口径：以输出字符数作为“max_tokens=5”近似验证（历史上用户依赖该判断展示）。
-        // 注意：这是 chars 口径，不是 tokens 口径；更强语义信号仍以 SSE stop_reason=max_tokens 为准。
-        max_output_chars: 5,
       },
       body: {
         max_tokens: 5,
@@ -40,7 +35,7 @@ export const CLAUDE_VALIDATION_TEMPLATES = [
     evaluation: {
       requireCacheDetail: false,
       requireModelConsistency: true,
-      // 历史口径：max_tokens=5 以输出长度校验为主；SSE stop_reason=max_tokens 作为诊断/强信号展示即可。
+      // max_tokens=5：以 usage.output_tokens<=5 为主；SSE stop_reason=max_tokens 作为诊断/强信号展示即可。
       requireSseStopReasonMaxTokens: false,
       requireThinkingOutput: false,
       requireSignature: false,

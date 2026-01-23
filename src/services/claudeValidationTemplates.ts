@@ -207,7 +207,7 @@ export function buildClaudeValidationRequestJson(
   existingMetadata.user_id = metadataUserId;
   nextBody.metadata = existingMetadata;
 
-  const expect = template.request.expect as ClaudeValidationExpect | undefined;
+  const expect = (template.request as { expect?: ClaudeValidationExpect }).expect;
   const headerOverrides = template.request.headers as unknown;
   const roundtrip = (template.request as any)?.roundtrip as unknown;
   const constraints = (template.request as any)?.constraints as unknown;
@@ -294,7 +294,7 @@ export type ClaudeValidationOutputExpectation = OutputExpectation;
 export function getClaudeValidationOutputExpectation(
   template: ClaudeValidationTemplate
 ): ClaudeValidationOutputExpectation | null {
-  const expect = template.request.expect as ClaudeValidationExpect | undefined;
+  const expect = (template.request as { expect?: ClaudeValidationExpect }).expect;
   const maxChars = typeof expect?.max_output_chars === "number" ? expect.max_output_chars : null;
   if (maxChars != null && Number.isFinite(maxChars) && maxChars > 0) {
     return { kind: "max", maxChars };
@@ -319,6 +319,7 @@ export type ClaudeValidationEvaluation = {
   checks: {
     cacheDetail?: { ok: boolean; label: string; title: string };
     outputChars?: { ok: boolean; label: string; title: string };
+    outputTokens?: { ok: boolean; label: string; title: string };
     sseStopReasonMaxTokens?: { ok: boolean; label: string; title: string };
     modelConsistency?: { ok: boolean; label: string; title: string };
     thinkingOutput?: { ok: boolean; label: string; title: string };
@@ -648,6 +649,33 @@ export function evaluateClaudeValidation(
     };
   }
 
+  if (result && template.key === "official_max_tokens_5") {
+    const usage = result.usage as unknown;
+    const outputTokens = get<number>(usage, "output_tokens");
+    const expectedMaxTokens = get<number>(template.request.body as unknown, "max_tokens");
+
+    const outputTokensOk =
+      typeof outputTokens === "number" &&
+      Number.isFinite(outputTokens) &&
+      outputTokens >= 0 &&
+      typeof expectedMaxTokens === "number" &&
+      Number.isFinite(expectedMaxTokens) &&
+      expectedMaxTokens > 0 &&
+      outputTokens <= expectedMaxTokens;
+
+    checksOut.outputTokens = {
+      ok: outputTokensOk,
+      label: `输出 tokens≤${typeof expectedMaxTokens === "number" ? expectedMaxTokens : "—"}`,
+      title: [
+        "验证点：usage.output_tokens 是否不超过 max_tokens。",
+        "策略：缺失 output_tokens 视为不通过（避免“无 usage 也放行”）。",
+        `观测：output_tokens=${typeof outputTokens === "number" ? outputTokens : "—"}; max_tokens=${
+          typeof expectedMaxTokens === "number" ? expectedMaxTokens : "—"
+        }`,
+      ].join("\n"),
+    };
+  }
+
   const outputExpectation = getClaudeValidationOutputExpectation(template);
   if (outputExpectation) {
     const checks = result?.checks as unknown;
@@ -931,6 +959,9 @@ export function evaluateClaudeValidation(
     if (hasError) return false;
 
     if (checksOut.reverseProxy && !checksOut.reverseProxy.ok) return false;
+    if (template.key === "official_max_tokens_5") {
+      if (!checksOut.outputTokens || !checksOut.outputTokens.ok) return false;
+    }
     if (
       requireSseStopReasonMaxTokens &&
       checksOut.sseStopReasonMaxTokens &&
