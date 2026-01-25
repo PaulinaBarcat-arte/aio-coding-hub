@@ -200,7 +200,10 @@ pub fn list_recent(
 pub fn list_recent_all(db: &db::Db, limit: usize) -> Result<Vec<RequestLogSummary>, String> {
     let conn = db.open_connection()?;
 
-    let sql = format!("SELECT{}FROM request_logs ORDER BY created_at_ms DESC, id DESC LIMIT ?1", REQUEST_LOG_SUMMARY_FIELDS);
+    let sql = format!(
+        "SELECT{}FROM request_logs ORDER BY created_at_ms DESC, id DESC LIMIT ?1",
+        REQUEST_LOG_SUMMARY_FIELDS
+    );
     let mut stmt = conn
         .prepare(&sql)
         .map_err(|e| format!("DB_ERROR: failed to prepare query: {e}"))?;
@@ -226,7 +229,10 @@ pub fn list_after_id(
     let conn = db.open_connection()?;
 
     let after_id = after_id.max(0);
-    let sql = format!("SELECT{}FROM request_logs WHERE cli_key = ?1 AND id > ?2 ORDER BY id ASC LIMIT ?3", REQUEST_LOG_SUMMARY_FIELDS);
+    let sql = format!(
+        "SELECT{}FROM request_logs WHERE cli_key = ?1 AND id > ?2 ORDER BY id ASC LIMIT ?3",
+        REQUEST_LOG_SUMMARY_FIELDS
+    );
     let mut stmt = conn
         .prepare(&sql)
         .map_err(|e| format!("DB_ERROR: failed to prepare query: {e}"))?;
@@ -250,7 +256,10 @@ pub fn list_after_id_all(
     let conn = db.open_connection()?;
 
     let after_id = after_id.max(0);
-    let sql = format!("SELECT{}FROM request_logs WHERE id > ?1 ORDER BY id ASC LIMIT ?2", REQUEST_LOG_SUMMARY_FIELDS);
+    let sql = format!(
+        "SELECT{}FROM request_logs WHERE id > ?1 ORDER BY id ASC LIMIT ?2",
+        REQUEST_LOG_SUMMARY_FIELDS
+    );
     let mut stmt = conn
         .prepare(&sql)
         .map_err(|e| format!("DB_ERROR: failed to prepare query: {e}"))?;
@@ -268,43 +277,42 @@ pub fn list_after_id_all(
 
 pub fn get_by_id(db: &db::Db, log_id: i64) -> Result<RequestLogDetail, String> {
     let conn = db.open_connection()?;
-    let sql = format!("SELECT{}FROM request_logs WHERE id = ?1", REQUEST_LOG_DETAIL_FIELDS);
-    conn.query_row(
-        &sql,
-        params![log_id],
-        |row| {
-            let cost_usd = cost_usd_from_femto(row.get("cost_usd_femto")?);
+    let sql = format!(
+        "SELECT{}FROM request_logs WHERE id = ?1",
+        REQUEST_LOG_DETAIL_FIELDS
+    );
+    conn.query_row(&sql, params![log_id], |row| {
+        let cost_usd = cost_usd_from_femto(row.get("cost_usd_femto")?);
 
-            Ok(RequestLogDetail {
-                id: row.get("id")?,
-                trace_id: row.get("trace_id")?,
-                cli_key: row.get("cli_key")?,
-                method: row.get("method")?,
-                path: row.get("path")?,
-                query: row.get("query")?,
-                excluded_from_stats: row.get::<_, i64>("excluded_from_stats").unwrap_or(0) != 0,
-                special_settings_json: row.get("special_settings_json")?,
-                status: row.get("status")?,
-                error_code: row.get("error_code")?,
-                duration_ms: row.get("duration_ms")?,
-                ttfb_ms: row.get("ttfb_ms")?,
-                attempts_json: row.get("attempts_json")?,
-                input_tokens: row.get("input_tokens")?,
-                output_tokens: row.get("output_tokens")?,
-                total_tokens: row.get("total_tokens")?,
-                cache_read_input_tokens: row.get("cache_read_input_tokens")?,
-                cache_creation_input_tokens: row.get("cache_creation_input_tokens")?,
-                cache_creation_5m_input_tokens: row.get("cache_creation_5m_input_tokens")?,
-                cache_creation_1h_input_tokens: row.get("cache_creation_1h_input_tokens")?,
-                usage_json: row.get("usage_json")?,
-                requested_model: row.get("requested_model")?,
-                cost_usd,
-                cost_multiplier: row.get("cost_multiplier")?,
-                created_at_ms: row.get("created_at_ms")?,
-                created_at: row.get("created_at")?,
-            })
-        },
-    )
+        Ok(RequestLogDetail {
+            id: row.get("id")?,
+            trace_id: row.get("trace_id")?,
+            cli_key: row.get("cli_key")?,
+            method: row.get("method")?,
+            path: row.get("path")?,
+            query: row.get("query")?,
+            excluded_from_stats: row.get::<_, i64>("excluded_from_stats").unwrap_or(0) != 0,
+            special_settings_json: row.get("special_settings_json")?,
+            status: row.get("status")?,
+            error_code: row.get("error_code")?,
+            duration_ms: row.get("duration_ms")?,
+            ttfb_ms: row.get("ttfb_ms")?,
+            attempts_json: row.get("attempts_json")?,
+            input_tokens: row.get("input_tokens")?,
+            output_tokens: row.get("output_tokens")?,
+            total_tokens: row.get("total_tokens")?,
+            cache_read_input_tokens: row.get("cache_read_input_tokens")?,
+            cache_creation_input_tokens: row.get("cache_creation_input_tokens")?,
+            cache_creation_5m_input_tokens: row.get("cache_creation_5m_input_tokens")?,
+            cache_creation_1h_input_tokens: row.get("cache_creation_1h_input_tokens")?,
+            usage_json: row.get("usage_json")?,
+            requested_model: row.get("requested_model")?,
+            cost_usd,
+            cost_multiplier: row.get("cost_multiplier")?,
+            created_at_ms: row.get("created_at_ms")?,
+            created_at: row.get("created_at")?,
+        })
+    })
     .optional()
     .map_err(|e| format!("DB_ERROR: failed to query request_log: {e}"))?
     .ok_or_else(|| "DB_NOT_FOUND: request_log not found".to_string())
@@ -316,43 +324,42 @@ pub fn get_by_trace_id(db: &db::Db, trace_id: &str) -> Result<Option<RequestLogD
     }
 
     let conn = db.open_connection()?;
-    let sql = format!("SELECT{}FROM request_logs WHERE trace_id = ?1", REQUEST_LOG_DETAIL_FIELDS);
-    conn.query_row(
-        &sql,
-        params![trace_id],
-        |row| {
-            let cost_usd = cost_usd_from_femto(row.get("cost_usd_femto")?);
+    let sql = format!(
+        "SELECT{}FROM request_logs WHERE trace_id = ?1",
+        REQUEST_LOG_DETAIL_FIELDS
+    );
+    conn.query_row(&sql, params![trace_id], |row| {
+        let cost_usd = cost_usd_from_femto(row.get("cost_usd_femto")?);
 
-            Ok(RequestLogDetail {
-                id: row.get("id")?,
-                trace_id: row.get("trace_id")?,
-                cli_key: row.get("cli_key")?,
-                method: row.get("method")?,
-                path: row.get("path")?,
-                query: row.get("query")?,
-                excluded_from_stats: row.get::<_, i64>("excluded_from_stats").unwrap_or(0) != 0,
-                special_settings_json: row.get("special_settings_json")?,
-                status: row.get("status")?,
-                error_code: row.get("error_code")?,
-                duration_ms: row.get("duration_ms")?,
-                ttfb_ms: row.get("ttfb_ms")?,
-                attempts_json: row.get("attempts_json")?,
-                input_tokens: row.get("input_tokens")?,
-                output_tokens: row.get("output_tokens")?,
-                total_tokens: row.get("total_tokens")?,
-                cache_read_input_tokens: row.get("cache_read_input_tokens")?,
-                cache_creation_input_tokens: row.get("cache_creation_input_tokens")?,
-                cache_creation_5m_input_tokens: row.get("cache_creation_5m_input_tokens")?,
-                cache_creation_1h_input_tokens: row.get("cache_creation_1h_input_tokens")?,
-                usage_json: row.get("usage_json")?,
-                requested_model: row.get("requested_model")?,
-                cost_usd,
-                cost_multiplier: row.get("cost_multiplier")?,
-                created_at_ms: row.get("created_at_ms")?,
-                created_at: row.get("created_at")?,
-            })
-        },
-    )
+        Ok(RequestLogDetail {
+            id: row.get("id")?,
+            trace_id: row.get("trace_id")?,
+            cli_key: row.get("cli_key")?,
+            method: row.get("method")?,
+            path: row.get("path")?,
+            query: row.get("query")?,
+            excluded_from_stats: row.get::<_, i64>("excluded_from_stats").unwrap_or(0) != 0,
+            special_settings_json: row.get("special_settings_json")?,
+            status: row.get("status")?,
+            error_code: row.get("error_code")?,
+            duration_ms: row.get("duration_ms")?,
+            ttfb_ms: row.get("ttfb_ms")?,
+            attempts_json: row.get("attempts_json")?,
+            input_tokens: row.get("input_tokens")?,
+            output_tokens: row.get("output_tokens")?,
+            total_tokens: row.get("total_tokens")?,
+            cache_read_input_tokens: row.get("cache_read_input_tokens")?,
+            cache_creation_input_tokens: row.get("cache_creation_input_tokens")?,
+            cache_creation_5m_input_tokens: row.get("cache_creation_5m_input_tokens")?,
+            cache_creation_1h_input_tokens: row.get("cache_creation_1h_input_tokens")?,
+            usage_json: row.get("usage_json")?,
+            requested_model: row.get("requested_model")?,
+            cost_usd,
+            cost_multiplier: row.get("cost_multiplier")?,
+            created_at_ms: row.get("created_at_ms")?,
+            created_at: row.get("created_at")?,
+        })
+    })
     .optional()
     .map_err(|e| format!("DB_ERROR: failed to query request_log: {e}"))
 }

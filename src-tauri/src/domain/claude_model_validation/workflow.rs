@@ -243,7 +243,10 @@ pub(super) async fn validate_provider_model(
         obj.insert_str("response_content_type", &step1.response_content_type);
         obj.insert_str("response_parse_mode", &step1.response_parse_mode);
         obj.insert_bool("stream_read_error", step1.stream_read_error.is_some());
-        obj.insert_opt_str("stream_read_error_message", step1.stream_read_error.as_deref());
+        obj.insert_opt_str(
+            "stream_read_error_message",
+            step1.stream_read_error.as_deref(),
+        );
     }
 
     let mut checks = serde_json::json!({
