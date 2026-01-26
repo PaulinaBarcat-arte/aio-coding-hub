@@ -174,9 +174,6 @@ export function WslSettingsCard({
             <Boxes className="h-5 w-5 text-blue-500" />
             WSL 配置
           </div>
-          <p className="mt-1 text-sm text-slate-500">
-            检测 WSL 发行版，并为 WSL 内的 CLI 写入代理配置。
-          </p>
         </div>
         <Button
           variant="secondary"

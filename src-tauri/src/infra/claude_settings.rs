@@ -11,6 +11,10 @@ const ENV_KEY_DISABLE_TELEMETRY: &str = "DISABLE_TELEMETRY";
 const ENV_KEY_DISABLE_BACKGROUND_TASKS: &str = "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS";
 const ENV_KEY_DISABLE_TERMINAL_TITLE: &str = "CLAUDE_CODE_DISABLE_TERMINAL_TITLE";
 const ENV_KEY_CLAUDE_BASH_NO_LOGIN: &str = "CLAUDE_BASH_NO_LOGIN";
+const ENV_KEY_CLAUDE_CODE_ATTRIBUTION_HEADER: &str = "CLAUDE_CODE_ATTRIBUTION_HEADER";
+const ENV_KEY_CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE: &str = "CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE";
+const ENV_KEY_CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: &str = "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE";
+const ENV_KEY_CLAUDE_CODE_MAX_OUTPUT_TOKENS: &str = "CLAUDE_CODE_MAX_OUTPUT_TOKENS";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ClaudeSettingsState {
@@ -41,6 +45,10 @@ pub struct ClaudeSettingsState {
     pub env_disable_background_tasks: bool,
     pub env_disable_terminal_title: bool,
     pub env_claude_bash_no_login: bool,
+    pub env_claude_code_attribution_header_disabled: bool,
+    pub env_claude_code_blocking_limit_override: Option<u64>,
+    pub env_claude_autocompact_pct_override: Option<u64>,
+    pub env_claude_code_max_output_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -65,6 +73,7 @@ pub struct ClaudeSettingsPatch {
     // Env semantics:
     // - numeric: `0` => delete the key (use default), `>0` => write
     // - bool: `true` => set key, `false` => delete key
+    // - bool (zero-toggle): `true` => write "0", `false` => delete key
     pub env_mcp_timeout_ms: Option<u64>,
     pub env_mcp_tool_timeout_ms: Option<u64>,
     pub env_disable_error_reporting: Option<bool>,
@@ -72,6 +81,10 @@ pub struct ClaudeSettingsPatch {
     pub env_disable_background_tasks: Option<bool>,
     pub env_disable_terminal_title: Option<bool>,
     pub env_claude_bash_no_login: Option<bool>,
+    pub env_claude_code_attribution_header_disabled: Option<bool>,
+    pub env_claude_code_blocking_limit_override: Option<u64>,
+    pub env_claude_autocompact_pct_override: Option<u64>,
+    pub env_claude_code_max_output_tokens: Option<u64>,
 }
 
 fn home_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -263,6 +276,20 @@ pub fn claude_settings_get(app: &tauri::AppHandle) -> Result<ClaudeSettingsState
     let env_claude_bash_no_login = env
         .map(|e| env_is_enabled(e, ENV_KEY_CLAUDE_BASH_NO_LOGIN))
         .unwrap_or(false);
+    let env_claude_code_attribution_header_disabled = env
+        .and_then(|e| e.get(ENV_KEY_CLAUDE_CODE_ATTRIBUTION_HEADER))
+        .and_then(env_bool_value)
+        .map(|v| !v)
+        .unwrap_or(false);
+    let env_claude_code_blocking_limit_override = env
+        .and_then(|e| e.get(ENV_KEY_CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE))
+        .and_then(env_u64_value);
+    let env_claude_autocompact_pct_override = env
+        .and_then(|e| e.get(ENV_KEY_CLAUDE_AUTOCOMPACT_PCT_OVERRIDE))
+        .and_then(env_u64_value);
+    let env_claude_code_max_output_tokens = env
+        .and_then(|e| e.get(ENV_KEY_CLAUDE_CODE_MAX_OUTPUT_TOKENS))
+        .and_then(env_u64_value);
 
     Ok(ClaudeSettingsState {
         config_dir: config_dir.to_string_lossy().to_string(),
@@ -294,6 +321,10 @@ pub fn claude_settings_get(app: &tauri::AppHandle) -> Result<ClaudeSettingsState
         env_disable_background_tasks,
         env_disable_terminal_title,
         env_claude_bash_no_login,
+        env_claude_code_attribution_header_disabled,
+        env_claude_code_blocking_limit_override,
+        env_claude_autocompact_pct_override,
+        env_claude_code_max_output_tokens,
     })
 }
 
@@ -332,6 +363,18 @@ fn patch_env_toggle(
 ) {
     if enabled {
         env.insert(key.to_string(), serde_json::Value::String("1".to_string()));
+    } else {
+        env.remove(key);
+    }
+}
+
+fn patch_env_zero_toggle(
+    env: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    disabled: bool,
+) {
+    if disabled {
+        env.insert(key.to_string(), serde_json::Value::String("0".to_string()));
     } else {
         env.remove(key);
     }
@@ -456,7 +499,11 @@ fn patch_claude_settings(
         || patch.env_disable_telemetry.is_some()
         || patch.env_disable_background_tasks.is_some()
         || patch.env_disable_terminal_title.is_some()
-        || patch.env_claude_bash_no_login.is_some();
+        || patch.env_claude_bash_no_login.is_some()
+        || patch.env_claude_code_attribution_header_disabled.is_some()
+        || patch.env_claude_code_blocking_limit_override.is_some()
+        || patch.env_claude_autocompact_pct_override.is_some()
+        || patch.env_claude_code_max_output_tokens.is_some();
     if has_env_patch {
         let entry = obj
             .entry("env".to_string())
@@ -490,6 +537,18 @@ fn patch_claude_settings(
             }
             if let Some(v) = patch.env_claude_bash_no_login {
                 patch_env_toggle(env, ENV_KEY_CLAUDE_BASH_NO_LOGIN, v);
+            }
+            if let Some(v) = patch.env_claude_code_attribution_header_disabled {
+                patch_env_zero_toggle(env, ENV_KEY_CLAUDE_CODE_ATTRIBUTION_HEADER, v);
+            }
+            if let Some(v) = patch.env_claude_code_blocking_limit_override {
+                patch_env_u64(env, ENV_KEY_CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE, v);
+            }
+            if let Some(v) = patch.env_claude_autocompact_pct_override {
+                patch_env_u64(env, ENV_KEY_CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, v);
+            }
+            if let Some(v) = patch.env_claude_code_max_output_tokens {
+                patch_env_u64(env, ENV_KEY_CLAUDE_CODE_MAX_OUTPUT_TOKENS, v);
             }
 
             env.is_empty()

@@ -287,10 +287,10 @@ export function CliManagerCodexTab({
                     className="w-[220px] max-w-full font-mono"
                   >
                     <option value="">默认（不设置）</option>
-                    <option value="untrusted">untrusted（更严格）</option>
-                    <option value="on-failure">on-failure（失败时）</option>
-                    <option value="on-request">on-request（请求时）</option>
-                    <option value="never">never（不询问）</option>
+                    <option value="untrusted">不信任（untrusted）</option>
+                    <option value="on-failure">失败时（on-failure）</option>
+                    <option value="on-request">请求时（on-request）</option>
+                    <option value="never">从不询问（never）</option>
                   </Select>
                 </SettingItem>
 
@@ -318,9 +318,9 @@ export function CliManagerCodexTab({
                     className="w-[220px] max-w-full font-mono"
                   >
                     <option value="">默认（不设置）</option>
-                    <option value="read-only">read-only</option>
-                    <option value="workspace-write">workspace-write</option>
-                    <option value="danger-full-access">danger-full-access</option>
+                    <option value="read-only">只读（read-only）</option>
+                    <option value="workspace-write">工作区写入（workspace-write）</option>
+                    <option value="danger-full-access">危险：完全访问（danger-full-access）</option>
                   </Select>
                 </SettingItem>
 
@@ -337,11 +337,11 @@ export function CliManagerCodexTab({
                     className="w-[220px] max-w-full font-mono"
                   >
                     <option value="">默认（不设置）</option>
-                    <option value="minimal">minimal</option>
-                    <option value="low">low</option>
-                    <option value="medium">medium</option>
-                    <option value="high">high</option>
-                    <option value="xhigh">xhigh</option>
+                    <option value="minimal">最低（minimal）</option>
+                    <option value="low">低（low）</option>
+                    <option value="medium">中等（medium）</option>
+                    <option value="high">高（high）</option>
+                    <option value="xhigh">极高（xhigh）</option>
                   </Select>
                 </SettingItem>
               </div>
@@ -370,7 +370,7 @@ export function CliManagerCodexTab({
                     <option value="vscode-insiders">vscode-insiders</option>
                     <option value="windsurf">windsurf</option>
                     <option value="cursor">cursor</option>
-                    <option value="none">none</option>
+                    <option value="none">无（none）</option>
                   </Select>
                 </SettingItem>
 
@@ -413,8 +413,8 @@ export function CliManagerCodexTab({
                     className="w-[220px] max-w-full font-mono"
                   >
                     <option value="">默认（不设置）</option>
-                    <option value="save-all">save-all</option>
-                    <option value="none">none</option>
+                    <option value="save-all">全部保存（save-all）</option>
+                    <option value="none">不保存（none）</option>
                   </Select>
                 </SettingItem>
 
@@ -518,9 +518,9 @@ export function CliManagerCodexTab({
                     className="w-[220px] max-w-full font-mono"
                   >
                     <option value="">默认（不设置）</option>
-                    <option value="auto">auto</option>
-                    <option value="always">always</option>
-                    <option value="never">never</option>
+                    <option value="auto">自动（auto）</option>
+                    <option value="always">始终（always）</option>
+                    <option value="never">从不（never）</option>
                   </Select>
                 </SettingItem>
 

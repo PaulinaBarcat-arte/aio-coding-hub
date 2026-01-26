@@ -265,12 +265,12 @@ export function CliManagerGeneralTab({
                       void onPersistCommonSettings({ upstream_first_byte_timeout_seconds: next });
                     }}
                     onKeyDown={blurOnEnter}
-                    className="w-24"
+                    style={{ width: '5rem' }}
                     min={0}
                     max={3600}
                     disabled={commonSettingsSaving || rectifierAvailable !== "available"}
                   />
-                  <span className="text-sm text-slate-500">秒</span>
+                  <span className="w-8 text-sm text-slate-500">秒</span>
                 </div>
               </SettingsRow>
 
@@ -296,12 +296,12 @@ export function CliManagerGeneralTab({
                       void onPersistCommonSettings({ upstream_stream_idle_timeout_seconds: next });
                     }}
                     onKeyDown={blurOnEnter}
-                    className="w-24"
+                    style={{ width: '5rem' }}
                     min={0}
                     max={3600}
                     disabled={commonSettingsSaving || rectifierAvailable !== "available"}
                   />
-                  <span className="text-sm text-slate-500">秒</span>
+                  <span className="w-8 text-sm text-slate-500">秒</span>
                 </div>
               </SettingsRow>
 
@@ -329,12 +329,12 @@ export function CliManagerGeneralTab({
                       });
                     }}
                     onKeyDown={blurOnEnter}
-                    className="w-24"
+                    style={{ width: '5rem' }}
                     min={0}
                     max={86400}
                     disabled={commonSettingsSaving || rectifierAvailable !== "available"}
                   />
-                  <span className="text-sm text-slate-500">秒</span>
+                  <span className="w-8 text-sm text-slate-500">秒</span>
                 </div>
               </SettingsRow>
             </div>
@@ -375,12 +375,12 @@ export function CliManagerGeneralTab({
                       void onPersistCommonSettings({ provider_cooldown_seconds: next });
                     }}
                     onKeyDown={blurOnEnter}
-                    className="w-24"
+                    style={{ width: '5rem' }}
                     min={0}
                     max={3600}
                     disabled={commonSettingsSaving || rectifierAvailable !== "available"}
                   />
-                  <span className="text-sm text-slate-500">秒</span>
+                  <span className="w-8 text-sm text-slate-500">秒</span>
                 </div>
               </SettingsRow>
 
@@ -408,12 +408,12 @@ export function CliManagerGeneralTab({
                       });
                     }}
                     onKeyDown={blurOnEnter}
-                    className="w-24"
+                    style={{ width: '5rem' }}
                     min={1}
                     max={3600}
                     disabled={commonSettingsSaving || rectifierAvailable !== "available"}
                   />
-                  <span className="text-sm text-slate-500">秒</span>
+                  <span className="w-8 text-sm text-slate-500">秒</span>
                 </div>
               </SettingsRow>
 
@@ -439,12 +439,12 @@ export function CliManagerGeneralTab({
                       void onPersistCommonSettings({ circuit_breaker_failure_threshold: next });
                     }}
                     onKeyDown={blurOnEnter}
-                    className="w-24"
+                    style={{ width: '5rem' }}
                     min={1}
                     max={50}
                     disabled={commonSettingsSaving || rectifierAvailable !== "available"}
                   />
-                  <span className="text-sm text-slate-500">次</span>
+                  <span className="w-8 text-sm text-slate-500">次</span>
                 </div>
               </SettingsRow>
 
@@ -472,12 +472,12 @@ export function CliManagerGeneralTab({
                       });
                     }}
                     onKeyDown={blurOnEnter}
-                    className="w-24"
+                    style={{ width: '5rem' }}
                     min={1}
                     max={1440}
                     disabled={commonSettingsSaving || rectifierAvailable !== "available"}
                   />
-                  <span className="text-sm text-slate-500">分钟</span>
+                  <span className="w-8 text-sm text-slate-500">分钟</span>
                 </div>
               </SettingsRow>
             </div>

@@ -209,10 +209,6 @@ export function NetworkSettingsCard({
             <Network className="h-5 w-5 text-blue-500" />
             网络设置
           </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            配置网关监听模式与地址（对齐 code-switch-r：仅本地 / WSL 自动检测 / 局域网 /
-            自定义地址）。
-          </p>
         </div>
 
         {!available ? (

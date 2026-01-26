@@ -21,6 +21,10 @@ fn empty_patch() -> ClaudeSettingsPatch {
         env_disable_background_tasks: None,
         env_disable_terminal_title: None,
         env_claude_bash_no_login: None,
+        env_claude_code_attribution_header_disabled: None,
+        env_claude_code_blocking_limit_override: None,
+        env_claude_autocompact_pct_override: None,
+        env_claude_code_max_output_tokens: None,
     }
 }
 
@@ -63,6 +67,94 @@ fn patch_env_preserves_unmanaged_keys() {
         env.get("DISABLE_ERROR_REPORTING").and_then(|v| v.as_str()),
         Some("1")
     );
+}
+
+#[test]
+fn patch_env_attribution_header_disabled_can_write_zero_and_remove_key() {
+    let input = serde_json::json!({
+      "env": {
+        "CLAUDE_CODE_ATTRIBUTION_HEADER": "1",
+        "KEEP": "x"
+      }
+    });
+
+    let patched = patch_claude_settings(
+        input,
+        ClaudeSettingsPatch {
+            env_claude_code_attribution_header_disabled: Some(true),
+            ..empty_patch()
+        },
+    )
+    .expect("patch");
+
+    let env = patched
+        .as_object()
+        .and_then(|o| o.get("env"))
+        .and_then(|v| v.as_object())
+        .expect("env object");
+
+    assert_eq!(
+        env.get("CLAUDE_CODE_ATTRIBUTION_HEADER")
+            .and_then(|v| v.as_str()),
+        Some("0")
+    );
+    assert_eq!(env.get("KEEP").and_then(|v| v.as_str()), Some("x"));
+
+    let patched = patch_claude_settings(
+        patched,
+        ClaudeSettingsPatch {
+            env_claude_code_attribution_header_disabled: Some(false),
+            ..empty_patch()
+        },
+    )
+    .expect("patch");
+
+    let env = patched
+        .as_object()
+        .and_then(|o| o.get("env"))
+        .and_then(|v| v.as_object())
+        .expect("env object");
+
+    assert!(env.get("CLAUDE_CODE_ATTRIBUTION_HEADER").is_none(), "{patched}");
+    assert_eq!(env.get("KEEP").and_then(|v| v.as_str()), Some("x"));
+}
+
+#[test]
+fn patch_env_numeric_overrides_can_write_and_remove_keys() {
+    let input = serde_json::json!({
+      "env": {
+        "CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE": "193000",
+        "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "95",
+        "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "8192"
+      },
+      "keep": 1
+    });
+
+    let patched = patch_claude_settings(
+        input,
+        ClaudeSettingsPatch {
+            env_claude_code_blocking_limit_override: Some(0),
+            env_claude_autocompact_pct_override: Some(88),
+            env_claude_code_max_output_tokens: Some(0),
+            ..empty_patch()
+        },
+    )
+    .expect("patch");
+
+    let env = patched
+        .as_object()
+        .and_then(|o| o.get("env"))
+        .and_then(|v| v.as_object())
+        .expect("env object");
+
+    assert!(env.get("CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE").is_none(), "{patched}");
+    assert_eq!(
+        env.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE")
+            .and_then(|v| v.as_str()),
+        Some("88")
+    );
+    assert!(env.get("CLAUDE_CODE_MAX_OUTPUT_TOKENS").is_none(), "{patched}");
+    assert_eq!(patched.get("keep").and_then(|v| v.as_i64()), Some(1));
 }
 
 #[test]

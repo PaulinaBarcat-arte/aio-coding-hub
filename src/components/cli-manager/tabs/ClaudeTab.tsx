@@ -164,6 +164,79 @@ function EnvTimeoutItem({
   );
 }
 
+type ClaudeEnvU64PatchKey =
+  | "env_claude_code_blocking_limit_override"
+  | "env_claude_autocompact_pct_override"
+  | "env_claude_code_max_output_tokens";
+
+function EnvU64Item({
+  label,
+  envVarName,
+  subtitle,
+  value,
+  onValueChange,
+  patchKey,
+  inputMax,
+  disabled,
+  validate,
+  revert,
+  persist,
+  placeholder,
+}: {
+  label: string;
+  envVarName: string;
+  subtitle: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  patchKey: ClaudeEnvU64PatchKey;
+  inputMax?: number;
+  disabled: boolean;
+  validate?: (value: number) => string | null;
+  revert: () => void;
+  persist: (patch: ClaudeSettingsPatch) => Promise<void> | void;
+  placeholder: string;
+}) {
+  return (
+    <SettingItem label={label} subtitle={subtitle}>
+      <Input
+        type="number"
+        value={value}
+        onChange={(e) => onValueChange(e.currentTarget.value)}
+        onBlur={() => {
+          const trimmed = value.trim();
+          if (!trimmed) {
+            void persist({ [patchKey]: 0 } as ClaudeSettingsPatch);
+            return;
+          }
+          const n = Math.floor(Number(trimmed));
+          if (!Number.isFinite(n) || n < 0) {
+            toast(`${envVarName} 必须为非负整数`);
+            revert();
+            return;
+          }
+          if (n > Number.MAX_SAFE_INTEGER) {
+            toast(`${envVarName} 值过大（超过 JS 安全整数）`);
+            revert();
+            return;
+          }
+          const customError = validate?.(n);
+          if (customError) {
+            toast(customError);
+            revert();
+            return;
+          }
+          void persist({ [patchKey]: n } as ClaudeSettingsPatch);
+        }}
+        className="font-mono w-[220px] max-w-full"
+        min={0}
+        max={inputMax}
+        disabled={disabled}
+        placeholder={placeholder}
+      />
+    </SettingItem>
+  );
+}
+
 export function CliManagerClaudeTab({
   claudeAvailable,
   claudeLoading,
@@ -180,6 +253,9 @@ export function CliManagerClaudeTab({
   const [languageText, setLanguageText] = useState("");
   const [mcpTimeoutMsText, setMcpTimeoutMsText] = useState("");
   const [mcpToolTimeoutMsText, setMcpToolTimeoutMsText] = useState("");
+  const [blockingLimitOverrideText, setBlockingLimitOverrideText] = useState("");
+  const [autocompactPctOverrideText, setAutocompactPctOverrideText] = useState("");
+  const [maxOutputTokensText, setMaxOutputTokensText] = useState("");
   const [permissionsAllowText, setPermissionsAllowText] = useState("");
   const [permissionsAskText, setPermissionsAskText] = useState("");
   const [permissionsDenyText, setPermissionsDenyText] = useState("");
@@ -196,6 +272,21 @@ export function CliManagerClaudeTab({
       claudeSettings.env_mcp_tool_timeout_ms == null
         ? ""
         : String(claudeSettings.env_mcp_tool_timeout_ms)
+    );
+    setBlockingLimitOverrideText(
+      claudeSettings.env_claude_code_blocking_limit_override == null
+        ? ""
+        : String(claudeSettings.env_claude_code_blocking_limit_override)
+    );
+    setAutocompactPctOverrideText(
+      claudeSettings.env_claude_autocompact_pct_override == null
+        ? ""
+        : String(claudeSettings.env_claude_autocompact_pct_override)
+    );
+    setMaxOutputTokensText(
+      claudeSettings.env_claude_code_max_output_tokens == null
+        ? ""
+        : String(claudeSettings.env_claude_code_max_output_tokens)
     );
     setPermissionsAllowText((claudeSettings.permissions_allow ?? []).join("\n"));
     setPermissionsAskText((claudeSettings.permissions_ask ?? []).join("\n"));
@@ -227,6 +318,33 @@ export function CliManagerClaudeTab({
       claudeSettings.env_mcp_tool_timeout_ms == null
         ? ""
         : String(claudeSettings.env_mcp_tool_timeout_ms)
+    );
+  }
+
+  function revertBlockingLimitOverrideInput() {
+    if (!claudeSettings) return;
+    setBlockingLimitOverrideText(
+      claudeSettings.env_claude_code_blocking_limit_override == null
+        ? ""
+        : String(claudeSettings.env_claude_code_blocking_limit_override)
+    );
+  }
+
+  function revertAutocompactPctOverrideInput() {
+    if (!claudeSettings) return;
+    setAutocompactPctOverrideText(
+      claudeSettings.env_claude_autocompact_pct_override == null
+        ? ""
+        : String(claudeSettings.env_claude_autocompact_pct_override)
+    );
+  }
+
+  function revertMaxOutputTokensInput() {
+    if (!claudeSettings) return;
+    setMaxOutputTokensText(
+      claudeSettings.env_claude_code_max_output_tokens == null
+        ? ""
+        : String(claudeSettings.env_claude_code_max_output_tokens)
     );
   }
 
@@ -572,6 +690,67 @@ export function CliManagerClaudeTab({
                   revert={revertTimeoutInputs}
                   persist={persistClaudeSettings}
                 />
+
+                <EnvU64Item
+                  label="CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE"
+                  envVarName="CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE"
+                  subtitle="覆盖 blocking limit（有效上下文/阻断阈值）。留空或 0 表示不设置该项。"
+                  value={blockingLimitOverrideText}
+                  onValueChange={setBlockingLimitOverrideText}
+                  patchKey="env_claude_code_blocking_limit_override"
+                  disabled={saving}
+                  revert={revertBlockingLimitOverrideInput}
+                  persist={persistClaudeSettings}
+                  placeholder="例如：193000"
+                />
+
+                <EnvU64Item
+                  label="CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"
+                  envVarName="CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"
+                  subtitle="自动压缩阈值（百分比）。留空或 0 表示不设置该项（使用默认）。"
+                  value={autocompactPctOverrideText}
+                  onValueChange={setAutocompactPctOverrideText}
+                  patchKey="env_claude_autocompact_pct_override"
+                  inputMax={100}
+                  disabled={saving}
+                  validate={(n) => {
+                    if (n !== 0 && (n < 1 || n > 100)) {
+                      return "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE 必须为 1-100（或留空/0 删除）";
+                    }
+                    return null;
+                  }}
+                  revert={revertAutocompactPctOverrideInput}
+                  persist={persistClaudeSettings}
+                  placeholder="例如：88"
+                />
+
+                <EnvU64Item
+                  label="CLAUDE_CODE_MAX_OUTPUT_TOKENS"
+                  envVarName="CLAUDE_CODE_MAX_OUTPUT_TOKENS"
+                  subtitle="限制最大输出 tokens（可能影响有效上下文窗口）。留空或 0 表示不设置该项。"
+                  value={maxOutputTokensText}
+                  onValueChange={setMaxOutputTokensText}
+                  patchKey="env_claude_code_max_output_tokens"
+                  disabled={saving}
+                  revert={revertMaxOutputTokensInput}
+                  persist={persistClaudeSettings}
+                  placeholder="默认"
+                />
+
+                <SettingItem
+                  label="CLAUDE_CODE_ATTRIBUTION_HEADER"
+                  subtitle="禁用 attribution header（开启写入 0；关闭删除该项）。"
+                >
+                  <Switch
+                    checked={claudeSettings.env_claude_code_attribution_header_disabled}
+                    onCheckedChange={(checked) =>
+                      void persistClaudeSettings({
+                        env_claude_code_attribution_header_disabled: checked,
+                      })
+                    }
+                    disabled={saving}
+                  />
+                </SettingItem>
 
                 <SettingItem label="DISABLE_ERROR_REPORTING" subtitle="禁用错误上报（Sentry）。">
                   <Switch

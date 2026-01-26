@@ -57,6 +57,10 @@ export type ClaudeSettingsState = {
   env_disable_background_tasks: boolean;
   env_disable_terminal_title: boolean;
   env_claude_bash_no_login: boolean;
+  env_claude_code_attribution_header_disabled: boolean;
+  env_claude_code_blocking_limit_override: number | null;
+  env_claude_autocompact_pct_override: number | null;
+  env_claude_code_max_output_tokens: number | null;
 };
 
 export type ClaudeSettingsPatch = Partial<{
@@ -83,6 +87,10 @@ export type ClaudeSettingsPatch = Partial<{
   env_disable_background_tasks: boolean;
   env_disable_terminal_title: boolean;
   env_claude_bash_no_login: boolean;
+  env_claude_code_attribution_header_disabled: boolean;
+  env_claude_code_blocking_limit_override: number;
+  env_claude_autocompact_pct_override: number;
+  env_claude_code_max_output_tokens: number;
 }>;
 
 export type CodexConfigState = {
