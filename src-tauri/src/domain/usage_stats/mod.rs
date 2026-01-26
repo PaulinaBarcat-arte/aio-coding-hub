@@ -29,9 +29,4 @@ use tokens::{
 };
 
 #[cfg(test)]
-use leaderboard_v2::leaderboard_v2_with_conn;
-#[cfg(test)]
-use summary::summary_query;
-
-#[cfg(test)]
 mod tests;

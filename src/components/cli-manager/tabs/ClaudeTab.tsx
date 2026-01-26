@@ -78,6 +78,92 @@ function parseLines(text: string): string[] {
     .filter(Boolean);
 }
 
+function PermissionTextareaItem({
+  label,
+  subtitle,
+  value,
+  onValueChange,
+  onPersist,
+  placeholder,
+  disabled,
+}: {
+  label: string;
+  subtitle: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  onPersist: (lines: string[]) => void;
+  placeholder: string;
+  disabled: boolean;
+}) {
+  return (
+    <SettingItem label={label} subtitle={subtitle} className="items-start">
+      <div className="w-full sm:w-[560px]">
+        <Textarea
+          mono
+          value={value}
+          onChange={(e) => onValueChange(e.currentTarget.value)}
+          onBlur={() => onPersist(parseLines(value))}
+          rows={6}
+          disabled={disabled}
+          placeholder={placeholder}
+        />
+      </div>
+    </SettingItem>
+  );
+}
+
+type ClaudeEnvTimeoutPatchKey = "env_mcp_timeout_ms" | "env_mcp_tool_timeout_ms";
+
+function EnvTimeoutItem({
+  label,
+  envVarName,
+  subtitle,
+  value,
+  onValueChange,
+  patchKey,
+  maxTimeoutMs,
+  disabled,
+  normalizeTimeoutMsOrZero,
+  revert,
+  persist,
+}: {
+  label: string;
+  envVarName: string;
+  subtitle: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  patchKey: ClaudeEnvTimeoutPatchKey;
+  maxTimeoutMs: number;
+  disabled: boolean;
+  normalizeTimeoutMsOrZero: (raw: string) => number;
+  revert: () => void;
+  persist: (patch: ClaudeSettingsPatch) => Promise<void> | void;
+}) {
+  return (
+    <SettingItem label={label} subtitle={subtitle}>
+      <Input
+        type="number"
+        value={value}
+        onChange={(e) => onValueChange(e.currentTarget.value)}
+        onBlur={() => {
+          const normalized = normalizeTimeoutMsOrZero(value);
+          if (!Number.isFinite(normalized) || normalized > maxTimeoutMs) {
+            toast(`${envVarName} 必须为 0-${maxTimeoutMs} 毫秒`);
+            revert();
+            return;
+          }
+          void persist({ [patchKey]: normalized } as ClaudeSettingsPatch);
+        }}
+        className="font-mono w-[220px] max-w-full"
+        min={0}
+        max={maxTimeoutMs}
+        disabled={disabled}
+        placeholder="默认"
+      />
+    </SettingItem>
+  );
+}
+
 export function CliManagerClaudeTab({
   claudeAvailable,
   claudeLoading,
@@ -402,7 +488,7 @@ export function CliManagerClaudeTab({
               <div className="divide-y divide-slate-100">
                 <SettingItem
                   label="禁用全部 hooks (disableAllHooks)"
-                  subtitle="开启会禁用所有 hooks；"
+                  subtitle="开启会禁用所有 hooks；关闭会删除该项（不写 false）。"
                 >
                   <Switch
                     checked={boolOrDefault(claudeSettings.disable_all_hooks, false)}
@@ -421,71 +507,35 @@ export function CliManagerClaudeTab({
                 Permissions
               </h3>
               <div className="divide-y divide-slate-100">
-                <SettingItem
+                <PermissionTextareaItem
                   label="permissions.allow"
                   subtitle="允许的工具规则（每行一条）。留空表示不设置。"
-                  className="items-start"
-                >
-                  <div className="w-full sm:w-[560px]">
-                    <Textarea
-                      mono
-                      value={permissionsAllowText}
-                      onChange={(e) => setPermissionsAllowText(e.currentTarget.value)}
-                      onBlur={() =>
-                        void persistClaudeSettings({
-                          permissions_allow: parseLines(permissionsAllowText),
-                        })
-                      }
-                      rows={6}
-                      disabled={saving}
-                      placeholder={"例如：\nBash(git diff:*)\nRead(./docs/**)"}
-                    />
-                  </div>
-                </SettingItem>
+                  value={permissionsAllowText}
+                  onValueChange={setPermissionsAllowText}
+                  onPersist={(lines) => void persistClaudeSettings({ permissions_allow: lines })}
+                  disabled={saving}
+                  placeholder={"例如：\nBash(git diff:*)\nRead(./docs/**)"}
+                />
 
-                <SettingItem
+                <PermissionTextareaItem
                   label="permissions.ask"
                   subtitle="需要确认的工具规则（每行一条）。留空表示不设置。"
-                  className="items-start"
-                >
-                  <div className="w-full sm:w-[560px]">
-                    <Textarea
-                      mono
-                      value={permissionsAskText}
-                      onChange={(e) => setPermissionsAskText(e.currentTarget.value)}
-                      onBlur={() =>
-                        void persistClaudeSettings({
-                          permissions_ask: parseLines(permissionsAskText),
-                        })
-                      }
-                      rows={6}
-                      disabled={saving}
-                      placeholder={"例如：\nBash(git push:*)"}
-                    />
-                  </div>
-                </SettingItem>
+                  value={permissionsAskText}
+                  onValueChange={setPermissionsAskText}
+                  onPersist={(lines) => void persistClaudeSettings({ permissions_ask: lines })}
+                  disabled={saving}
+                  placeholder={"例如：\nBash(git push:*)"}
+                />
 
-                <SettingItem
+                <PermissionTextareaItem
                   label="permissions.deny"
                   subtitle="拒绝的工具规则（每行一条）。建议用于敏感文件与危险命令。"
-                  className="items-start"
-                >
-                  <div className="w-full sm:w-[560px]">
-                    <Textarea
-                      mono
-                      value={permissionsDenyText}
-                      onChange={(e) => setPermissionsDenyText(e.currentTarget.value)}
-                      onBlur={() =>
-                        void persistClaudeSettings({
-                          permissions_deny: parseLines(permissionsDenyText),
-                        })
-                      }
-                      rows={6}
-                      disabled={saving}
-                      placeholder={"例如：\nRead(./.env)\nRead(./secrets/**)\nBash(rm -rf:*)"}
-                    />
-                  </div>
-                </SettingItem>
+                  value={permissionsDenyText}
+                  onValueChange={setPermissionsDenyText}
+                  onPersist={(lines) => void persistClaudeSettings({ permissions_deny: lines })}
+                  disabled={saving}
+                  placeholder={"例如：\nRead(./.env)\nRead(./secrets/**)\nBash(rm -rf:*)"}
+                />
               </div>
             </div>
 
@@ -495,57 +545,33 @@ export function CliManagerClaudeTab({
                 环境配置（env / 白名单）
               </h3>
               <div className="divide-y divide-slate-100">
-                <SettingItem
+                <EnvTimeoutItem
                   label="MCP_TIMEOUT (ms)"
+                  envVarName="MCP_TIMEOUT"
                   subtitle={`MCP server 启动超时（0/留空=默认，范围 0-${MAX_TIMEOUT_MS}）。`}
-                >
-                  <Input
-                    type="number"
-                    value={mcpTimeoutMsText}
-                    onChange={(e) => setMcpTimeoutMsText(e.currentTarget.value)}
-                    onBlur={() => {
-                      if (!claudeSettings) return;
-                      const normalized = normalizeTimeoutMsOrZero(mcpTimeoutMsText);
-                      if (!Number.isFinite(normalized) || normalized > MAX_TIMEOUT_MS) {
-                        toast(`MCP_TIMEOUT 必须为 0-${MAX_TIMEOUT_MS} 毫秒`);
-                        revertTimeoutInputs();
-                        return;
-                      }
-                      void persistClaudeSettings({ env_mcp_timeout_ms: normalized });
-                    }}
-                    className="font-mono w-[220px] max-w-full"
-                    min={0}
-                    max={MAX_TIMEOUT_MS}
-                    disabled={saving}
-                    placeholder="默认"
-                  />
-                </SettingItem>
+                  value={mcpTimeoutMsText}
+                  onValueChange={setMcpTimeoutMsText}
+                  patchKey="env_mcp_timeout_ms"
+                  maxTimeoutMs={MAX_TIMEOUT_MS}
+                  disabled={saving}
+                  normalizeTimeoutMsOrZero={normalizeTimeoutMsOrZero}
+                  revert={revertTimeoutInputs}
+                  persist={persistClaudeSettings}
+                />
 
-                <SettingItem
+                <EnvTimeoutItem
                   label="MCP_TOOL_TIMEOUT (ms)"
+                  envVarName="MCP_TOOL_TIMEOUT"
                   subtitle={`MCP tool 执行超时（0/留空=默认，范围 0-${MAX_TIMEOUT_MS}）。`}
-                >
-                  <Input
-                    type="number"
-                    value={mcpToolTimeoutMsText}
-                    onChange={(e) => setMcpToolTimeoutMsText(e.currentTarget.value)}
-                    onBlur={() => {
-                      if (!claudeSettings) return;
-                      const normalized = normalizeTimeoutMsOrZero(mcpToolTimeoutMsText);
-                      if (!Number.isFinite(normalized) || normalized > MAX_TIMEOUT_MS) {
-                        toast(`MCP_TOOL_TIMEOUT 必须为 0-${MAX_TIMEOUT_MS} 毫秒`);
-                        revertTimeoutInputs();
-                        return;
-                      }
-                      void persistClaudeSettings({ env_mcp_tool_timeout_ms: normalized });
-                    }}
-                    className="font-mono w-[220px] max-w-full"
-                    min={0}
-                    max={MAX_TIMEOUT_MS}
-                    disabled={saving}
-                    placeholder="默认"
-                  />
-                </SettingItem>
+                  value={mcpToolTimeoutMsText}
+                  onValueChange={setMcpToolTimeoutMsText}
+                  patchKey="env_mcp_tool_timeout_ms"
+                  maxTimeoutMs={MAX_TIMEOUT_MS}
+                  disabled={saving}
+                  normalizeTimeoutMsOrZero={normalizeTimeoutMsOrZero}
+                  revert={revertTimeoutInputs}
+                  persist={persistClaudeSettings}
+                />
 
                 <SettingItem label="DISABLE_ERROR_REPORTING" subtitle="禁用错误上报（Sentry）。">
                   <Switch

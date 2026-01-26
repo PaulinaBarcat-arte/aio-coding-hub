@@ -1,3 +1,5 @@
+use super::leaderboard_v2::leaderboard_v2_with_conn;
+use super::summary::summary_query;
 use super::*;
 use rusqlite::{params, Connection};
 
