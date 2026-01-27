@@ -1,6 +1,7 @@
 import { logToConsole, shouldLogToConsole } from "./consoleLog";
 import { hasTauriRuntime } from "./tauriInvoke";
 import { ingestTraceAttempt, ingestTraceRequest, ingestTraceStart } from "./traceStore";
+import { ingestCacheAnomalyRequest, ingestCacheAnomalyRequestStart } from "./cacheAnomalyMonitor";
 
 export type GatewayAttempt = {
   provider_id: number;
@@ -28,6 +29,7 @@ export type GatewayRequestEvent = {
   cache_read_input_tokens?: number | null;
   cache_creation_input_tokens?: number | null;
   cache_creation_5m_input_tokens?: number | null;
+  cache_creation_1h_input_tokens?: number | null;
 };
 
 export type GatewayRequestStartEvent = {
@@ -157,6 +159,7 @@ export async function listenGatewayEvents(): Promise<() => void> {
       if (!payload) return;
 
       ingestTraceStart(payload);
+      ingestCacheAnomalyRequestStart(payload);
 
       if (!shouldLogToConsole("debug")) return;
 
@@ -205,6 +208,7 @@ export async function listenGatewayEvents(): Promise<() => void> {
     if (!payload) return;
 
     ingestTraceRequest(payload);
+    ingestCacheAnomalyRequest(payload);
 
     if (!shouldLogToConsole("debug")) return;
 
@@ -233,6 +237,7 @@ export async function listenGatewayEvents(): Promise<() => void> {
       cache_read_input_tokens: payload.cache_read_input_tokens,
       cache_creation_input_tokens: payload.cache_creation_input_tokens,
       cache_creation_5m_input_tokens: payload.cache_creation_5m_input_tokens,
+      cache_creation_1h_input_tokens: payload.cache_creation_1h_input_tokens ?? null,
       attempts,
     });
   });

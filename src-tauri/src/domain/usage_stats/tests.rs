@@ -7,9 +7,15 @@ fn setup_conn() -> Connection {
     let conn = Connection::open_in_memory().expect("open in-memory sqlite");
     conn.execute_batch(
         r#"
+	CREATE TABLE providers (
+	  id INTEGER PRIMARY KEY,
+	  name TEXT NOT NULL
+	);
+
 	CREATE TABLE request_logs (
 	  cli_key TEXT NOT NULL,
 	  attempts_json TEXT NOT NULL,
+	  final_provider_id INTEGER,
 	  requested_model TEXT,
 	  status INTEGER,
 	  error_code TEXT,
@@ -43,6 +49,7 @@ fn v2_cache_rate_denominator_aligns_across_clis() {
 INSERT INTO request_logs (
   cli_key,
   attempts_json,
+  final_provider_id,
   requested_model,
   status,
   error_code,
@@ -59,11 +66,12 @@ INSERT INTO request_logs (
 	  usage_json,
 	  excluded_from_stats,
 	  created_at
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18);
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19);
 	"#,
         params![
             "codex",
             r#"[{"provider_id":123,"provider_name":"OpenAI","outcome":"success"}]"#,
+            123,
             "gpt-test",
             200,
             Option::<String>::None,
@@ -89,6 +97,7 @@ INSERT INTO request_logs (
 INSERT INTO request_logs (
   cli_key,
   attempts_json,
+  final_provider_id,
   requested_model,
   status,
   error_code,
@@ -105,11 +114,12 @@ INSERT INTO request_logs (
 	  usage_json,
 	  excluded_from_stats,
 	  created_at
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18);
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19);
 	"#,
         params![
             "gemini",
             r#"[{"provider_id":456,"provider_name":"GeminiUpstream","outcome":"success"}]"#,
+            456,
             "gemini-test",
             200,
             Option::<String>::None,
@@ -136,6 +146,7 @@ INSERT INTO request_logs (
 INSERT INTO request_logs (
   cli_key,
   attempts_json,
+  final_provider_id,
   requested_model,
   status,
   error_code,
@@ -152,11 +163,12 @@ INSERT INTO request_logs (
 	  usage_json,
 	  excluded_from_stats,
 	  created_at
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18);
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19);
 	"#,
         params![
             "claude",
             r#"[{"provider_id":789,"provider_name":"ClaudeUpstream","outcome":"success"}]"#,
+            789,
             "claude-test",
             200,
             Option::<String>::None,
@@ -256,4 +268,54 @@ INSERT INTO request_logs (
             .cost_usd,
         None
     );
+}
+
+#[test]
+fn v2_provider_leaderboard_dedupes_by_provider_id() {
+    let conn = setup_conn();
+
+    for (provider_name, created_at) in [("OpenAI", 1000i64), ("OpenAI ", 1001i64)] {
+        let attempts_json = format!(
+            r#"[{{"provider_id":123,"provider_name":"{provider_name}","outcome":"success"}}]"#
+        );
+
+        conn.execute(
+            r#"
+INSERT INTO request_logs (
+  cli_key,
+  attempts_json,
+  final_provider_id,
+  status,
+  error_code,
+  duration_ms,
+  created_at
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);
+        "#,
+            params![
+                "codex",
+                attempts_json,
+                123,
+                200,
+                Option::<String>::None,
+                1000,
+                created_at
+            ],
+        )
+        .expect("insert request log");
+    }
+
+    let rows = leaderboard_v2_with_conn(&conn, UsageScopeV2::Provider, None, None, None, 50)
+        .expect("leaderboard_v2_with_conn provider");
+
+    let keys: std::collections::HashSet<&str> = rows.iter().map(|row| row.key.as_str()).collect();
+    assert_eq!(keys.len(), rows.len());
+
+    let row = rows
+        .iter()
+        .find(|row| row.key == "codex:123")
+        .expect("codex provider row");
+    assert_eq!(row.name, "codex/OpenAI");
+    assert_eq!(row.requests_total, 2);
+    assert_eq!(row.requests_success, 2);
+    assert_eq!(row.requests_failed, 0);
 }

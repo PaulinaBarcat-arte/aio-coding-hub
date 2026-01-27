@@ -1,5 +1,6 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { toast } from "sonner";
+import { setCacheAnomalyMonitorEnabled, useCacheAnomalyMonitorEnabled } from "../../../services/cacheAnomalyMonitor";
 import type { AppSettings } from "../../../services/settings";
 import type { GatewayRectifierSettingsPatch } from "../../../services/settingsGatewayRectifier";
 import { Card } from "../../../ui/Card";
@@ -8,7 +9,7 @@ import { SettingsRow } from "../../../ui/SettingsRow";
 import { Switch } from "../../../ui/Switch";
 import { NetworkSettingsCard } from "../NetworkSettingsCard";
 import { WslSettingsCard } from "../WslSettingsCard";
-import { AlertTriangle, Shield } from "lucide-react";
+import { AlertTriangle, Shield, TrendingDown } from "lucide-react";
 
 export type CliManagerAvailability = "checking" | "available" | "unavailable";
 
@@ -79,6 +80,8 @@ export function CliManagerGeneralTab({
   setCircuitBreakerOpenDurationMinutes,
   blurOnEnter,
 }: CliManagerGeneralTabProps) {
+  const cacheMonitorEnabled = useCacheAnomalyMonitorEnabled();
+
   return (
     <div className="space-y-6">
       <div className="grid gap-6 md:grid-cols-2">
@@ -206,6 +209,42 @@ export function CliManagerGeneralTab({
                   checked={circuitBreakerNoticeEnabled}
                   onCheckedChange={(checked) => void onPersistCircuitBreakerNotice(checked)}
                   disabled={circuitBreakerNoticeSaving || rectifierAvailable !== "available"}
+                />
+              )}
+            </div>
+          </div>
+        </Card>
+
+        <Card className="md:col-span-2">
+          <div className="mb-4 flex items-start gap-4">
+            <div className="p-2 bg-slate-50 rounded-lg text-slate-600">
+              <TrendingDown className="h-6 w-6" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-base font-semibold text-slate-900">缓存异常监测（实验）</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                近 1 小时滑窗（按 Provider + Model）监测缓存读取/创建异常。仅 Claude / Codex；
+                命中后写入控制台并发送系统通知。
+              </p>
+              <div className="mt-2 space-y-1 text-xs text-slate-500">
+                <p>触发条件：最近 15 分钟命中率相对前 45 分钟显著下降，或“有创建但读取为 0”。</p>
+                <p>
+                  门槛（默认）：基线 token≥10000 且成功请求≥30；最近 token≥3000 且成功请求≥10；
+                  基线命中率≥5%。* token 不是请求数
+                </p>
+              </div>
+            </div>
+            <div className="pt-1">
+              {rectifierAvailable === "unavailable" ? (
+                <span className="text-xs text-slate-400">不可用</span>
+              ) : (
+                <Switch
+                  checked={cacheMonitorEnabled}
+                  onCheckedChange={(checked) => {
+                    setCacheAnomalyMonitorEnabled(checked);
+                    toast(checked ? "已开启缓存异常监测（实验）" : "已关闭缓存异常监测（实验）");
+                  }}
+                  disabled={rectifierAvailable !== "available"}
                 />
               )}
             </div>

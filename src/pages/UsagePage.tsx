@@ -40,7 +40,7 @@ const PERIOD_ITEMS: PeriodItem[] = [
   { key: "custom", label: "自定义" },
 ];
 
-const FILTER_LABEL_CLASS = "w-16 shrink-0 pt-1 text-right text-xs font-medium text-slate-500";
+const FILTER_LABEL_CLASS = "w-16 shrink-0 pt-1.5 text-right text-xs font-medium text-slate-600";
 const FILTER_OPTIONS_CLASS = "min-w-0 flex flex-1 flex-wrap items-center gap-2";
 const FILTER_OPTION_BUTTON_CLASS = "w-24 whitespace-nowrap";
 
@@ -93,12 +93,12 @@ function StatCard({
   className?: string;
 }) {
   return (
-    <Card padding="md" className={cn("flex h-full flex-col", className)}>
-      <div className="text-xs font-medium text-slate-500">{title}</div>
-      <div className="mt-2 text-lg font-semibold tracking-tight text-slate-900 xl:text-xl">
+    <Card padding="md" className={cn("flex h-full flex-col transition-shadow hover:shadow-lg", className)}>
+      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{title}</div>
+      <div className="mt-3 text-xl font-semibold tracking-tight text-slate-900 xl:text-2xl">
         {value}
       </div>
-      {hint ? <div className="mt-auto pt-2 text-xs text-slate-500">{hint}</div> : null}
+      {hint ? <div className="mt-auto pt-3 text-xs leading-relaxed text-slate-500">{hint}</div> : null}
     </Card>
   );
 }
@@ -106,9 +106,9 @@ function StatCard({
 function StatCardSkeleton({ className }: { className?: string }) {
   return (
     <Card padding="md" className={cn("h-full animate-pulse", className)}>
-      <div className="h-3 w-24 rounded bg-slate-200" />
-      <div className="mt-3 h-8 w-32 rounded bg-slate-200" />
-      <div className="mt-3 h-3 w-40 rounded bg-slate-100" />
+      <div className="h-3 w-20 rounded-md bg-slate-200" />
+      <div className="mt-4 h-7 w-28 rounded-md bg-slate-200" />
+      <div className="mt-4 h-3 w-36 rounded-md bg-slate-100" />
     </Card>
   );
 }
@@ -344,8 +344,8 @@ export function UsagePage() {
     <div className="space-y-6">
       <PageHeader title="用量" />
 
-      <div className="flex flex-col gap-3">
-        <div className="flex items-start gap-2">
+      <Card padding="md" className="space-y-4">
+        <div className="flex items-start gap-3">
           <span className={FILTER_LABEL_CLASS}>CLI：</span>
           <div className={FILTER_OPTIONS_CLASS}>
             {CLI_FILTER_ITEMS.map((item) => (
@@ -363,7 +363,7 @@ export function UsagePage() {
           </div>
         </div>
 
-        <div className="flex items-start gap-2">
+        <div className="flex items-start gap-3">
           <span className={FILTER_LABEL_CLASS}>维度：</span>
           <div className={FILTER_OPTIONS_CLASS}>
             {SCOPE_ITEMS.map((item) => (
@@ -381,7 +381,7 @@ export function UsagePage() {
           </div>
         </div>
 
-        <div className="flex items-start gap-2">
+        <div className="flex items-start gap-3">
           <span className={FILTER_LABEL_CLASS}>时间窗：</span>
           <div className={FILTER_OPTIONS_CLASS}>
             {PERIOD_ITEMS.map((item) => (
@@ -397,7 +397,7 @@ export function UsagePage() {
               </Button>
             ))}
             {period === "custom" ? (
-              <span className="w-full text-xs text-slate-500">
+              <span className="w-full pt-1 text-xs text-slate-500">
                 endDate 包含（按本地日期边界计算）
               </span>
             ) : null}
@@ -405,28 +405,30 @@ export function UsagePage() {
         </div>
 
         {showCustomForm ? (
-          <div className="flex items-start gap-2">
+          <div className="flex items-start gap-3 border-t border-slate-100 pt-4">
             <div className="w-16 shrink-0" aria-hidden="true" />
-            <div className="min-w-0 flex flex-1 flex-col gap-2 md:flex-row md:items-end">
-              <div className="flex flex-col gap-1">
-                <div className="text-xs font-medium text-slate-500">Start</div>
+            <div className="min-w-0 flex flex-1 flex-col gap-3 md:flex-row md:items-end">
+              <div className="flex flex-col gap-1.5">
+                <div className="text-xs font-medium text-slate-600">开始日期</div>
                 <input
                   type="date"
                   value={customStartDate}
                   onChange={(e) => setCustomStartDate(e.currentTarget.value)}
-                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/20"
+                  aria-label="开始日期"
+                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/20"
                 />
               </div>
-              <div className="flex flex-col gap-1">
-                <div className="text-xs font-medium text-slate-500">End</div>
+              <div className="flex flex-col gap-1.5">
+                <div className="text-xs font-medium text-slate-600">结束日期</div>
                 <input
                   type="date"
                   value={customEndDate}
                   onChange={(e) => setCustomEndDate(e.currentTarget.value)}
-                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/20"
+                  aria-label="结束日期"
+                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/20"
                 />
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 md:pb-0.5">
                 <Button size="sm" variant="primary" onClick={applyCustomRange} disabled={loading}>
                   应用
                 </Button>
@@ -434,7 +436,7 @@ export function UsagePage() {
                   清空
                 </Button>
                 {customApplied ? (
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs font-medium text-slate-600">
                     已应用：{customApplied.startDate} → {customApplied.endDate}
                   </span>
                 ) : (
@@ -444,7 +446,7 @@ export function UsagePage() {
             </div>
           </div>
         ) : null}
-      </div>
+      </Card>
 
       {errorText ? (
         <Card padding="md" className="border-rose-200 bg-rose-50">
@@ -479,16 +481,16 @@ export function UsagePage() {
         </Card>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
         {loading ? (
           Array.from({ length: 6 }).map((_, idx) => <StatCardSkeleton key={idx} />)
         ) : summaryCards.length === 0 ? (
           <Card padding="md" className="col-span-full">
             <div className="text-sm text-slate-600">
               {errorText
-                ? "加载失败：暂无可展示的用量摘要。请点击上方“重试”。"
+                ? '加载失败：暂无可展示的用量摘要。请点击上方"重试"。'
                 : period === "custom" && !customApplied
-                  ? "自定义范围：请选择日期后点击“应用”。"
+                  ? '自定义范围：请选择日期后点击"应用"。'
                   : "暂无用量数据。请先通过网关发起请求。"}
             </div>
           </Card>
@@ -499,8 +501,8 @@ export function UsagePage() {
         )}
       </div>
 
-      <Card padding="md">
-        <div className="flex items-center justify-between gap-4">
+      <Card padding="none">
+        <div className="flex items-center justify-between gap-4 px-6 pb-0 pt-5">
           <div className="text-sm font-semibold text-slate-900">{tableTitle}</div>
         </div>
 
@@ -509,52 +511,52 @@ export function UsagePage() {
             <div className="overflow-x-auto">
               <table className="w-full border-separate border-spacing-0 text-left text-sm">
                 <thead>
-                  <tr className="text-xs text-slate-500">
-                    <th className="border-b border-slate-200 px-2 py-2">#</th>
-                    <th className="border-b border-slate-200 px-2 py-2">名称</th>
-                    <th className="border-b border-slate-200 px-2 py-2">请求数</th>
-                    <th className="border-b border-slate-200 px-2 py-2">成功率</th>
-                    <th className="border-b border-slate-200 px-2 py-2">总 Token（输入+输出）</th>
-                    <th className="border-b border-slate-200 px-2 py-2">缓存 / 缓存率</th>
-                    <th className="border-b border-slate-200 px-2 py-2">平均耗时</th>
-                    <th className="border-b border-slate-200 px-2 py-2">平均 TTFB</th>
-                    <th className="border-b border-slate-200 px-2 py-2">平均速率</th>
-                    <th className="border-b border-slate-200 px-2 py-2">花费金额</th>
+                  <tr className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5">#</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5">名称</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5">请求数</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5">成功率</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5">总 Token</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5">缓存 / 缓存率</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5">平均耗时</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5">平均首字</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5">平均速率</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5">花费金额</th>
                   </tr>
                 </thead>
                 <tbody className="animate-pulse">
-                  {Array.from({ length: 10 }).map((_, idx) => (
+                  {Array.from({ length: 5 }).map((_, idx) => (
                     <tr key={idx} className="align-top">
-                      <td className="border-b border-slate-100 px-2 py-3">
-                        <div className="h-3 w-6 rounded bg-slate-200" />
+                      <td className="border-b border-slate-100 px-3 py-3.5">
+                        <div className="h-3 w-5 rounded-md bg-slate-200" />
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-3">
-                        <div className="h-3 w-40 rounded bg-slate-200" />
-                        <div className="mt-2 h-3 w-56 rounded bg-slate-100" />
+                      <td className="border-b border-slate-100 px-3 py-3.5">
+                        <div className="h-3 w-32 rounded-md bg-slate-200" />
+                        <div className="mt-2 h-3 w-48 rounded-md bg-slate-100" />
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-3">
-                        <div className="h-3 w-16 rounded bg-slate-200" />
+                      <td className="border-b border-slate-100 px-3 py-3.5">
+                        <div className="h-3 w-14 rounded-md bg-slate-200" />
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-3">
-                        <div className="h-3 w-14 rounded bg-slate-200" />
+                      <td className="border-b border-slate-100 px-3 py-3.5">
+                        <div className="h-3 w-12 rounded-md bg-slate-200" />
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-3">
-                        <div className="h-3 w-20 rounded bg-slate-200" />
+                      <td className="border-b border-slate-100 px-3 py-3.5">
+                        <div className="h-3 w-16 rounded-md bg-slate-200" />
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-3">
-                        <div className="h-3 w-24 rounded bg-slate-200" />
+                      <td className="border-b border-slate-100 px-3 py-3.5">
+                        <div className="h-3 w-20 rounded-md bg-slate-200" />
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-3">
-                        <div className="h-3 w-16 rounded bg-slate-200" />
+                      <td className="border-b border-slate-100 px-3 py-3.5">
+                        <div className="h-3 w-14 rounded-md bg-slate-200" />
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-3">
-                        <div className="h-3 w-16 rounded bg-slate-200" />
+                      <td className="border-b border-slate-100 px-3 py-3.5">
+                        <div className="h-3 w-14 rounded-md bg-slate-200" />
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-3">
-                        <div className="h-3 w-20 rounded bg-slate-200" />
+                      <td className="border-b border-slate-100 px-3 py-3.5">
+                        <div className="h-3 w-16 rounded-md bg-slate-200" />
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-3">
-                        <div className="h-3 w-16 rounded bg-slate-200" />
+                      <td className="border-b border-slate-100 px-3 py-3.5">
+                        <div className="h-3 w-14 rounded-md bg-slate-200" />
                       </td>
                     </tr>
                   ))}
@@ -562,28 +564,28 @@ export function UsagePage() {
               </table>
             </div>
           ) : rows.length === 0 && !summary ? (
-            <div className="text-sm text-slate-600">
+            <div className="px-6 pb-5 text-sm text-slate-600">
               {errorText
-                ? "加载失败：暂无可展示的数据。请点击上方“重试”。"
+                ? '加载失败：暂无可展示的数据。请点击上方"重试"。'
                 : period === "custom" && !customApplied
-                  ? "自定义范围：请选择日期后点击“应用”。"
+                  ? '自定义范围：请选择日期后点击"应用"。'
                   : "暂无用量数据。请先通过网关发起请求。"}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full border-separate border-spacing-0 text-left text-sm">
-                <thead>
-                  <tr className="text-xs text-slate-500">
-                    <th className="border-b border-slate-200 px-2 py-2">#</th>
-                    <th className="border-b border-slate-200 px-2 py-2">名称</th>
-                    <th className="border-b border-slate-200 px-2 py-2">请求数</th>
-                    <th className="border-b border-slate-200 px-2 py-2">成功率</th>
-                    <th className="border-b border-slate-200 px-2 py-2">总 Token（输入+输出）</th>
-                    <th className="border-b border-slate-200 px-2 py-2">缓存 / 缓存率</th>
-                    <th className="border-b border-slate-200 px-2 py-2">平均耗时</th>
-                    <th className="border-b border-slate-200 px-2 py-2">平均 TTFB</th>
-                    <th className="border-b border-slate-200 px-2 py-2">平均速率</th>
-                    <th className="border-b border-slate-200 px-2 py-2">花费金额</th>
+                <thead className="sticky top-0 z-10">
+                  <tr className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5 backdrop-blur-sm">#</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5 backdrop-blur-sm">名称</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5 backdrop-blur-sm">请求数</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5 backdrop-blur-sm">成功率</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5 backdrop-blur-sm">总 Token</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5 backdrop-blur-sm">缓存 / 缓存率</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5 backdrop-blur-sm">平均耗时</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5 backdrop-blur-sm">平均首字</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5 backdrop-blur-sm">平均速率</th>
+                    <th className="border-b border-slate-200 bg-slate-50/60 px-3 py-2.5 backdrop-blur-sm">花费金额</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -591,10 +593,10 @@ export function UsagePage() {
                     <tr className="align-top">
                       <td
                         colSpan={10}
-                        className="border-b border-slate-100 px-2 py-3 text-sm text-slate-600"
+                        className="border-b border-slate-100 px-3 py-4 text-sm text-slate-600"
                       >
                         {errorText
-                          ? "加载失败：暂无可展示的数据。请点击上方“重试”。"
+                          ? '加载失败：暂无可展示的数据。请点击上方"重试"。'
                           : summary
                             ? "暂无 Leaderboard 数据。"
                             : "暂无可展示的数据。"}
@@ -602,20 +604,20 @@ export function UsagePage() {
                     </tr>
                   ) : (
                     rows.map((row, index) => (
-                      <tr key={row.key} className="align-top">
-                        <td className="border-b border-slate-100 px-2 py-2 text-xs text-slate-500">
+                      <tr key={row.key} className="align-top transition-colors hover:bg-slate-50/50">
+                        <td className="border-b border-slate-100 px-3 py-3 text-xs tabular-nums text-slate-400">
                           {index + 1}
                         </td>
-                        <td className="border-b border-slate-100 px-2 py-2">
+                        <td className="border-b border-slate-100 px-3 py-3">
                           <div className="font-medium text-slate-900">{row.name}</div>
                         </td>
-                        <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                        <td className="border-b border-slate-100 px-3 py-3 font-mono text-xs tabular-nums text-slate-700">
                           {formatInteger(row.requests_total)}
                         </td>
-                        <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                        <td className="border-b border-slate-100 px-3 py-3 font-mono text-xs tabular-nums text-slate-700">
                           {formatPercent(successRate(row))}
                         </td>
-                        <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                        <td className="border-b border-slate-100 px-3 py-3 font-mono text-xs tabular-nums text-slate-700">
                           <TokenBreakdown
                             totalTokens={row.io_total_tokens}
                             inputTokens={row.input_tokens}
@@ -623,7 +625,7 @@ export function UsagePage() {
                             totalTokensWithCache={row.total_tokens}
                           />
                         </td>
-                        <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                        <td className="border-b border-slate-100 px-3 py-3 font-mono text-xs tabular-nums text-slate-700">
                           <CacheBreakdown
                             inputTokens={row.input_tokens}
                             outputTokens={row.output_tokens}
@@ -631,16 +633,16 @@ export function UsagePage() {
                             cacheReadInputTokens={row.cache_read_input_tokens}
                           />
                         </td>
-                        <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                        <td className="border-b border-slate-100 px-3 py-3 font-mono text-xs tabular-nums text-slate-700">
                           {formatDurationMs(row.avg_duration_ms)}
                         </td>
-                        <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                        <td className="border-b border-slate-100 px-3 py-3 font-mono text-xs tabular-nums text-slate-700">
                           {formatDurationMs(row.avg_ttfb_ms)}
                         </td>
-                        <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                        <td className="border-b border-slate-100 px-3 py-3 font-mono text-xs tabular-nums text-slate-700">
                           {formatTokensPerSecond(row.avg_output_tokens_per_second)}
                         </td>
-                        <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                        <td className="border-b border-slate-100 px-3 py-3 font-mono text-xs tabular-nums text-slate-700">
                           {formatUsd(row.cost_usd)}
                         </td>
                       </tr>
@@ -649,13 +651,13 @@ export function UsagePage() {
                 </tbody>
                 {summary ? (
                   <tfoot>
-                    <tr className="align-top bg-slate-50/40">
-                      <td className="border-b border-slate-100 px-2 py-2 text-xs font-mono text-slate-500">
+                    <tr className="align-top bg-slate-100/80">
+                      <td className="border-b border-slate-200 px-3 py-3 text-sm font-semibold text-slate-500">
                         Σ
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-2">
-                        <div className="font-medium text-slate-900">总计</div>
-                        <div className="mt-0.5 text-xs text-slate-500">
+                      <td className="border-b border-slate-200 px-3 py-3">
+                        <div className="font-semibold text-slate-900">总计</div>
+                        <div className="mt-1 text-xs leading-relaxed text-slate-500">
                           {formatInteger(summary.requests_total)} 请求 ·{" "}
                           {formatInteger(summary.requests_with_usage)} 有用量
                         </div>
@@ -663,17 +665,17 @@ export function UsagePage() {
                           仅统计成功请求（{formatInteger(summary.requests_success)}）
                         </div>
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                      <td className="border-b border-slate-200 px-3 py-3 font-mono text-xs font-medium tabular-nums text-slate-900">
                         {formatInteger(summary.requests_total)}
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                      <td className="border-b border-slate-200 px-3 py-3 font-mono text-xs font-medium tabular-nums text-slate-900">
                         {formatPercent(
                           summary.requests_total > 0
                             ? summary.requests_success / summary.requests_total
                             : NaN
                         )}
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                      <td className="border-b border-slate-200 px-3 py-3 font-mono text-xs font-medium tabular-nums text-slate-900">
                         <TokenBreakdown
                           totalTokens={summary.io_total_tokens}
                           inputTokens={summary.input_tokens}
@@ -681,7 +683,7 @@ export function UsagePage() {
                           totalTokensWithCache={summary.total_tokens}
                         />
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                      <td className="border-b border-slate-200 px-3 py-3 font-mono text-xs font-medium tabular-nums text-slate-900">
                         <CacheBreakdown
                           inputTokens={summary.input_tokens}
                           outputTokens={summary.output_tokens}
@@ -689,16 +691,16 @@ export function UsagePage() {
                           cacheReadInputTokens={summary.cache_read_input_tokens}
                         />
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                      <td className="border-b border-slate-200 px-3 py-3 font-mono text-xs font-medium tabular-nums text-slate-900">
                         {formatDurationMs(summary.avg_duration_ms)}
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                      <td className="border-b border-slate-200 px-3 py-3 font-mono text-xs font-medium tabular-nums text-slate-900">
                         {formatDurationMs(summary.avg_ttfb_ms)}
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                      <td className="border-b border-slate-200 px-3 py-3 font-mono text-xs font-medium tabular-nums text-slate-900">
                         {formatTokensPerSecond(summary.avg_output_tokens_per_second)}
                       </td>
-                      <td className="border-b border-slate-100 px-2 py-2 font-mono text-xs text-slate-700">
+                      <td className="border-b border-slate-200 px-3 py-3 font-mono text-xs font-medium tabular-nums text-slate-500">
                         —
                       </td>
                     </tr>
