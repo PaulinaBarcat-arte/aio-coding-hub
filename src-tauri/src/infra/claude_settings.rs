@@ -15,6 +15,9 @@ const ENV_KEY_CLAUDE_CODE_ATTRIBUTION_HEADER: &str = "CLAUDE_CODE_ATTRIBUTION_HE
 const ENV_KEY_CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE: &str = "CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE";
 const ENV_KEY_CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: &str = "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE";
 const ENV_KEY_CLAUDE_CODE_MAX_OUTPUT_TOKENS: &str = "CLAUDE_CODE_MAX_OUTPUT_TOKENS";
+const ENV_KEY_ENABLE_EXPERIMENTAL_MCP_CLI: &str = "ENABLE_EXPERIMENTAL_MCP_CLI";
+const ENV_KEY_ENABLE_TOOL_SEARCH: &str = "ENABLE_TOOL_SEARCH";
+const ENV_KEY_MAX_MCP_OUTPUT_TOKENS: &str = "MAX_MCP_OUTPUT_TOKENS";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ClaudeSettingsState {
@@ -49,6 +52,9 @@ pub struct ClaudeSettingsState {
     pub env_claude_code_blocking_limit_override: Option<u64>,
     pub env_claude_autocompact_pct_override: Option<u64>,
     pub env_claude_code_max_output_tokens: Option<u64>,
+    pub env_enable_experimental_mcp_cli: bool,
+    pub env_enable_tool_search: bool,
+    pub env_max_mcp_output_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -85,6 +91,9 @@ pub struct ClaudeSettingsPatch {
     pub env_claude_code_blocking_limit_override: Option<u64>,
     pub env_claude_autocompact_pct_override: Option<u64>,
     pub env_claude_code_max_output_tokens: Option<u64>,
+    pub env_enable_experimental_mcp_cli: Option<bool>,
+    pub env_enable_tool_search: Option<bool>,
+    pub env_max_mcp_output_tokens: Option<u64>,
 }
 
 fn home_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -290,6 +299,15 @@ pub fn claude_settings_get(app: &tauri::AppHandle) -> Result<ClaudeSettingsState
     let env_claude_code_max_output_tokens = env
         .and_then(|e| e.get(ENV_KEY_CLAUDE_CODE_MAX_OUTPUT_TOKENS))
         .and_then(env_u64_value);
+    let env_enable_experimental_mcp_cli = env
+        .map(|e| env_is_enabled(e, ENV_KEY_ENABLE_EXPERIMENTAL_MCP_CLI))
+        .unwrap_or(false);
+    let env_enable_tool_search = env
+        .map(|e| env_is_enabled(e, ENV_KEY_ENABLE_TOOL_SEARCH))
+        .unwrap_or(false);
+    let env_max_mcp_output_tokens = env
+        .and_then(|e| e.get(ENV_KEY_MAX_MCP_OUTPUT_TOKENS))
+        .and_then(env_u64_value);
 
     Ok(ClaudeSettingsState {
         config_dir: config_dir.to_string_lossy().to_string(),
@@ -325,6 +343,9 @@ pub fn claude_settings_get(app: &tauri::AppHandle) -> Result<ClaudeSettingsState
         env_claude_code_blocking_limit_override,
         env_claude_autocompact_pct_override,
         env_claude_code_max_output_tokens,
+        env_enable_experimental_mcp_cli,
+        env_enable_tool_search,
+        env_max_mcp_output_tokens,
     })
 }
 
@@ -375,6 +396,21 @@ fn patch_env_zero_toggle(
 ) {
     if disabled {
         env.insert(key.to_string(), serde_json::Value::String("0".to_string()));
+    } else {
+        env.remove(key);
+    }
+}
+
+fn patch_env_bool_toggle(
+    env: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    enabled: bool,
+) {
+    if enabled {
+        env.insert(
+            key.to_string(),
+            serde_json::Value::String("true".to_string()),
+        );
     } else {
         env.remove(key);
     }
@@ -503,7 +539,10 @@ fn patch_claude_settings(
         || patch.env_claude_code_attribution_header_disabled.is_some()
         || patch.env_claude_code_blocking_limit_override.is_some()
         || patch.env_claude_autocompact_pct_override.is_some()
-        || patch.env_claude_code_max_output_tokens.is_some();
+        || patch.env_claude_code_max_output_tokens.is_some()
+        || patch.env_enable_experimental_mcp_cli.is_some()
+        || patch.env_enable_tool_search.is_some()
+        || patch.env_max_mcp_output_tokens.is_some();
     if has_env_patch {
         let entry = obj
             .entry("env".to_string())
@@ -549,6 +588,15 @@ fn patch_claude_settings(
             }
             if let Some(v) = patch.env_claude_code_max_output_tokens {
                 patch_env_u64(env, ENV_KEY_CLAUDE_CODE_MAX_OUTPUT_TOKENS, v);
+            }
+            if let Some(v) = patch.env_enable_experimental_mcp_cli {
+                patch_env_bool_toggle(env, ENV_KEY_ENABLE_EXPERIMENTAL_MCP_CLI, v);
+            }
+            if let Some(v) = patch.env_enable_tool_search {
+                patch_env_bool_toggle(env, ENV_KEY_ENABLE_TOOL_SEARCH, v);
+            }
+            if let Some(v) = patch.env_max_mcp_output_tokens {
+                patch_env_u64(env, ENV_KEY_MAX_MCP_OUTPUT_TOKENS, v);
             }
 
             env.is_empty()

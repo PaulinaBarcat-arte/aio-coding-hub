@@ -167,7 +167,8 @@ function EnvTimeoutItem({
 type ClaudeEnvU64PatchKey =
   | "env_claude_code_blocking_limit_override"
   | "env_claude_autocompact_pct_override"
-  | "env_claude_code_max_output_tokens";
+  | "env_claude_code_max_output_tokens"
+  | "env_max_mcp_output_tokens";
 
 function EnvU64Item({
   label,
@@ -256,6 +257,7 @@ export function CliManagerClaudeTab({
   const [blockingLimitOverrideText, setBlockingLimitOverrideText] = useState("");
   const [autocompactPctOverrideText, setAutocompactPctOverrideText] = useState("");
   const [maxOutputTokensText, setMaxOutputTokensText] = useState("");
+  const [maxMcpOutputTokensText, setMaxMcpOutputTokensText] = useState("");
   const [permissionsAllowText, setPermissionsAllowText] = useState("");
   const [permissionsAskText, setPermissionsAskText] = useState("");
   const [permissionsDenyText, setPermissionsDenyText] = useState("");
@@ -287,6 +289,11 @@ export function CliManagerClaudeTab({
       claudeSettings.env_claude_code_max_output_tokens == null
         ? ""
         : String(claudeSettings.env_claude_code_max_output_tokens)
+    );
+    setMaxMcpOutputTokensText(
+      claudeSettings.env_max_mcp_output_tokens == null
+        ? ""
+        : String(claudeSettings.env_max_mcp_output_tokens)
     );
     setPermissionsAllowText((claudeSettings.permissions_allow ?? []).join("\n"));
     setPermissionsAskText((claudeSettings.permissions_ask ?? []).join("\n"));
@@ -345,6 +352,15 @@ export function CliManagerClaudeTab({
       claudeSettings.env_claude_code_max_output_tokens == null
         ? ""
         : String(claudeSettings.env_claude_code_max_output_tokens)
+    );
+  }
+
+  function revertMaxMcpOutputTokensInput() {
+    if (!claudeSettings) return;
+    setMaxMcpOutputTokensText(
+      claudeSettings.env_max_mcp_output_tokens == null
+        ? ""
+        : String(claudeSettings.env_max_mcp_output_tokens)
     );
   }
 
@@ -653,6 +669,56 @@ export function CliManagerClaudeTab({
                   onPersist={(lines) => void persistClaudeSettings({ permissions_deny: lines })}
                   disabled={saving}
                   placeholder={"例如：\nRead(./.env)\nRead(./secrets/**)\nBash(rm -rf:*)"}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-5">
+              <h3 className="text-sm font-semibold text-amber-900 flex items-center gap-2 mb-1">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                实验性功能
+              </h3>
+              <p className="text-xs text-amber-700 mb-3">
+                以下功能为实验性质，可能随时变更或移除。
+              </p>
+              <div className="divide-y divide-amber-100">
+                <SettingItem
+                  label="ENABLE_EXPERIMENTAL_MCP_CLI"
+                  subtitle="启用 MCP-CLI 模式，按需加载工具以节省上下文（可节省约 95% 上下文）。"
+                >
+                  <Switch
+                    checked={claudeSettings.env_enable_experimental_mcp_cli}
+                    onCheckedChange={(checked) =>
+                      void persistClaudeSettings({ env_enable_experimental_mcp_cli: checked })
+                    }
+                    disabled={saving}
+                  />
+                </SettingItem>
+
+                <SettingItem
+                  label="ENABLE_TOOL_SEARCH"
+                  subtitle="启用工具搜索，当 MCP 工具超过 10% 上下文时自动懒加载。两者同时启用时，此选项优先。"
+                >
+                  <Switch
+                    checked={claudeSettings.env_enable_tool_search}
+                    onCheckedChange={(checked) =>
+                      void persistClaudeSettings({ env_enable_tool_search: checked })
+                    }
+                    disabled={saving}
+                  />
+                </SettingItem>
+
+                <EnvU64Item
+                  label="MAX_MCP_OUTPUT_TOKENS"
+                  envVarName="MAX_MCP_OUTPUT_TOKENS"
+                  subtitle="MCP 工具响应的最大 tokens。留空或 0 表示使用默认值（25000）。"
+                  value={maxMcpOutputTokensText}
+                  onValueChange={setMaxMcpOutputTokensText}
+                  patchKey="env_max_mcp_output_tokens"
+                  disabled={saving}
+                  revert={revertMaxMcpOutputTokensInput}
+                  persist={persistClaudeSettings}
+                  placeholder="25000"
                 />
               </div>
             </div>

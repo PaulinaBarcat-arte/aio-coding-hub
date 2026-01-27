@@ -25,6 +25,9 @@ fn empty_patch() -> ClaudeSettingsPatch {
         env_claude_code_blocking_limit_override: None,
         env_claude_autocompact_pct_override: None,
         env_claude_code_max_output_tokens: None,
+        env_enable_experimental_mcp_cli: None,
+        env_enable_tool_search: None,
+        env_max_mcp_output_tokens: None,
     }
 }
 

@@ -61,6 +61,9 @@ export type ClaudeSettingsState = {
   env_claude_code_blocking_limit_override: number | null;
   env_claude_autocompact_pct_override: number | null;
   env_claude_code_max_output_tokens: number | null;
+  env_enable_experimental_mcp_cli: boolean;
+  env_enable_tool_search: boolean;
+  env_max_mcp_output_tokens: number | null;
 };
 
 export type ClaudeSettingsPatch = Partial<{
@@ -91,6 +94,9 @@ export type ClaudeSettingsPatch = Partial<{
   env_claude_code_blocking_limit_override: number;
   env_claude_autocompact_pct_override: number;
   env_claude_code_max_output_tokens: number;
+  env_enable_experimental_mcp_cli: boolean;
+  env_enable_tool_search: boolean;
+  env_max_mcp_output_tokens: number;
 }>;
 
 export type CodexConfigState = {
