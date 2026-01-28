@@ -1,17 +1,5 @@
 //! Usage: Validation + normalization helpers for MCP server management.
 
-pub(super) fn enabled_to_int(enabled: bool) -> i64 {
-    if enabled {
-        1
-    } else {
-        0
-    }
-}
-
-pub(super) fn normalize_name(name: &str) -> String {
-    name.trim().to_lowercase()
-}
-
 pub(super) fn validate_transport(transport: &str) -> Result<(), String> {
     match transport {
         "stdio" | "http" => Ok(()),

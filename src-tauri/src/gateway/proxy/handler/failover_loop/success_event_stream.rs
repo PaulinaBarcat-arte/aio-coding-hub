@@ -1,5 +1,6 @@
 //! Usage: Handle successful event-stream upstream responses inside `failover_loop::run`.
 
+use super::super::super::provider_router;
 use super::*;
 
 pub(super) async fn handle_success_event_stream(
@@ -157,7 +158,8 @@ pub(super) async fn handle_success_event_stream(
                     )
                 {
                     let now_unix = now_unix_seconds() as i64;
-                    let snap = state.circuit.trigger_cooldown(
+                    let snap = provider_router::trigger_cooldown(
+                        state.circuit.as_ref(),
                         provider_id,
                         now_unix,
                         provider_cooldown_secs,
@@ -233,7 +235,8 @@ pub(super) async fn handle_success_event_stream(
                     )
                 {
                     let now_unix = now_unix_seconds() as i64;
-                    let snap = state.circuit.trigger_cooldown(
+                    let snap = provider_router::trigger_cooldown(
+                        state.circuit.as_ref(),
                         provider_id,
                         now_unix,
                         provider_cooldown_secs,
@@ -316,10 +319,12 @@ pub(super) async fn handle_success_event_stream(
                 )
             {
                 let now_unix = now_unix_seconds() as i64;
-                let snap =
-                    state
-                        .circuit
-                        .trigger_cooldown(provider_id, now_unix, provider_cooldown_secs);
+                let snap = provider_router::trigger_cooldown(
+                    state.circuit.as_ref(),
+                    provider_id,
+                    now_unix,
+                    provider_cooldown_secs,
+                );
                 *circuit_snapshot = snap;
             }
 

@@ -4,8 +4,10 @@ use super::paths::{cli_skills_root, ensure_skills_roots, ssot_skills_root, valid
 use super::repo_cache::ensure_repo_cache;
 use super::skill_md::parse_skill_md;
 use super::types::InstalledSkillSummary;
-use super::util::{enabled_to_int, normalize_name, validate_relative_subdir};
+use super::util::validate_relative_subdir;
 use crate::db;
+use crate::shared::sqlite::enabled_to_int;
+use crate::shared::text::normalize_name;
 use crate::shared::time::now_unix_seconds;
 use rusqlite::params;
 use rusqlite::OptionalExtension;

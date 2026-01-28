@@ -1,5 +1,6 @@
 //! Usage: Handle Claude thinking-signature rectifier (400) path inside `failover_loop::run`.
 
+use super::super::super::upstream_client_error_rules;
 use super::*;
 
 #[allow(clippy::too_many_arguments)]
@@ -117,7 +118,13 @@ pub(super) async fn handle_thinking_signature_rectifier_400(
             }
         };
 
-        let upstream_body_text = String::from_utf8_lossy(buffered_body.as_ref()).to_string();
+        let mut headers_for_scan = response_headers.clone();
+        let body_for_scan = maybe_gunzip_response_body_bytes_with_limit(
+            buffered_body.clone(),
+            &mut headers_for_scan,
+            MAX_NON_SSE_BODY_BYTES,
+        );
+        let upstream_body_text = String::from_utf8_lossy(body_for_scan.as_ref()).to_string();
         let trigger = thinking_signature_rectifier::detect_trigger(&upstream_body_text);
 
         let mut rectified_applied = false;
@@ -161,19 +168,39 @@ pub(super) async fn handle_thinking_signature_rectifier_400(
             }
         }
 
-        let (category, error_code, _base_decision) = classify_upstream_status(status);
-        let decision = if rectified_applied {
+        let (base_category, error_code, _base_decision) = classify_upstream_status(status);
+
+        let mut matched_rule_id: Option<&'static str> = None;
+        let mut category = base_category;
+        let mut decision = if rectified_applied {
             FailoverDecision::RetrySameProvider
         } else {
-            FailoverDecision::Abort
+            // Align with claude-code-hub: if it's not a known non-retryable client error,
+            // allow switching providers instead of aborting the whole request.
+            FailoverDecision::SwitchProvider
         };
+
+        if !rectified_applied {
+            matched_rule_id = upstream_client_error_rules::match_non_retryable_client_error(
+                &cli_key,
+                status,
+                body_for_scan.as_ref(),
+            );
+            if matched_rule_id.is_some() {
+                category = ErrorCategory::NonRetryableClientError;
+                decision = FailoverDecision::Abort;
+            }
+        }
 
         let circuit_state_before = Some(circuit_before.state.as_str());
         let circuit_state_after: Option<&'static str> = None;
         let circuit_failure_count = Some(circuit_before.failure_count);
         let circuit_failure_threshold = Some(circuit_before.failure_threshold);
 
-        let reason = format!("status={}", status.as_u16());
+        let reason = match matched_rule_id {
+            Some(rule_id) => format!("status={} rule={rule_id}", status.as_u16()),
+            None => format!("status={}", status.as_u16()),
+        };
         let outcome = format!(
             "upstream_error: status={} category={} code={} decision={}",
             status.as_u16(),

@@ -4,16 +4,13 @@ use crate::mcp_sync;
 use rusqlite::Connection;
 use std::collections::BTreeMap;
 
+use super::cli_specs::{spec_for_cli_key, MCP_CLI_SPECS};
+
 pub(super) fn list_enabled_for_cli(
     conn: &Connection,
     cli_key: &str,
 ) -> Result<Vec<mcp_sync::McpServerForSync>, String> {
-    let (col, _) = match cli_key {
-        "claude" => ("enabled_claude", ".claude.json"),
-        "codex" => ("enabled_codex", ".codex/config.toml"),
-        "gemini" => ("enabled_gemini", ".gemini/settings.json"),
-        _ => return Err(format!("SEC_INVALID_INPUT: unknown cli_key={cli_key}")),
-    };
+    let col = spec_for_cli_key(cli_key)?.enabled_column;
 
     let sql = format!(
         r#"
@@ -69,14 +66,9 @@ ORDER BY server_key ASC
 }
 
 pub(super) fn sync_all_cli(app: &tauri::AppHandle, conn: &Connection) -> Result<(), String> {
-    let claude = list_enabled_for_cli(conn, "claude")?;
-    mcp_sync::sync_cli(app, "claude", &claude)?;
-
-    let codex = list_enabled_for_cli(conn, "codex")?;
-    mcp_sync::sync_cli(app, "codex", &codex)?;
-
-    let gemini = list_enabled_for_cli(conn, "gemini")?;
-    mcp_sync::sync_cli(app, "gemini", &gemini)?;
+    for spec in MCP_CLI_SPECS {
+        sync_one_cli(app, conn, spec.cli_key)?;
+    }
 
     Ok(())
 }

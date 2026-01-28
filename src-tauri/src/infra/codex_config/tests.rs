@@ -38,6 +38,8 @@ type = "stdio"
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");
@@ -87,6 +89,8 @@ foo = "bar"
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");
@@ -132,6 +136,8 @@ network_access = false
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");
@@ -177,6 +183,8 @@ other = "keep"
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");
@@ -222,6 +230,8 @@ web_search_request = true
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");
@@ -266,6 +276,8 @@ shell_snapshot = true
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");
@@ -309,6 +321,8 @@ shell_tool = false
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");
@@ -353,6 +367,8 @@ shell_tool = true
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");
@@ -398,6 +414,8 @@ scroll_invert = false
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");
@@ -444,6 +462,8 @@ max_bytes = 123
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");
@@ -496,6 +516,8 @@ foo = "bar"
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");
@@ -529,6 +551,8 @@ foo = "bar"
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");
@@ -598,6 +622,8 @@ type = "stdio"
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");
@@ -713,6 +739,8 @@ foo = "bar"
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");
@@ -756,6 +784,8 @@ fn patch_updates_sandbox_dotted_mode_when_present() {
             features_remote_models: None,
             features_powershell_utf8: None,
             features_child_agents_md: None,
+            features_collab: None,
+            features_collaboration_modes: None,
         },
     )
     .expect("patch_config_toml");

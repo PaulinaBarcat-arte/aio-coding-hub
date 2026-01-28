@@ -6,12 +6,9 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use super::super::events::{emit_circuit_transition, emit_request_event};
-use super::super::proxy::{
-    spawn_enqueue_request_log_with_backpressure, ErrorCategory, RequestLogEnqueueArgs,
-};
+use super::super::events::emit_request_event;
+use super::super::proxy::{spawn_enqueue_request_log_with_backpressure, RequestLogEnqueueArgs};
 use super::super::response_fixer;
-use super::super::util::now_unix_seconds;
 use super::StreamFinalizeCtx;
 
 pub(in crate::gateway) struct TimingOnlyTeeStream<S, B>
@@ -55,67 +52,8 @@ where
         self.finalized = true;
 
         let duration_ms = self.ctx.started.elapsed().as_millis();
-        let effective_error_category = if error_code == Some("GW_STREAM_ABORTED") {
-            Some(ErrorCategory::ClientAbort.as_str())
-        } else {
-            self.ctx.error_category
-        };
-
-        let now_unix = now_unix_seconds() as i64;
-        if error_code.is_some()
-            && effective_error_category != Some(ErrorCategory::ClientAbort.as_str())
-            && self.ctx.provider_cooldown_secs > 0
-        {
-            self.ctx.circuit.trigger_cooldown(
-                self.ctx.provider_id,
-                now_unix,
-                self.ctx.provider_cooldown_secs,
-            );
-        }
-        if error_code.is_none() && (200..300).contains(&self.ctx.status) {
-            let change = self
-                .ctx
-                .circuit
-                .record_success(self.ctx.provider_id, now_unix);
-            if let Some(t) = change.transition {
-                emit_circuit_transition(
-                    &self.ctx.app,
-                    &self.ctx.trace_id,
-                    &self.ctx.cli_key,
-                    self.ctx.provider_id,
-                    &self.ctx.provider_name,
-                    &self.ctx.base_url,
-                    &t,
-                    now_unix,
-                );
-            }
-            if let Some(session_id) = self.ctx.session_id.as_deref() {
-                self.ctx.session.bind_success(
-                    &self.ctx.cli_key,
-                    session_id,
-                    self.ctx.provider_id,
-                    self.ctx.sort_mode_id,
-                    now_unix,
-                );
-            }
-        } else if effective_error_category == Some(ErrorCategory::ProviderError.as_str()) {
-            let change = self
-                .ctx
-                .circuit
-                .record_failure(self.ctx.provider_id, now_unix);
-            if let Some(t) = change.transition {
-                emit_circuit_transition(
-                    &self.ctx.app,
-                    &self.ctx.trace_id,
-                    &self.ctx.cli_key,
-                    self.ctx.provider_id,
-                    &self.ctx.provider_name,
-                    &self.ctx.base_url,
-                    &t,
-                    now_unix,
-                );
-            }
-        }
+        let effective_error_category =
+            super::finalize::finalize_circuit_and_session(&self.ctx, error_code);
 
         emit_request_event(
             &self.ctx.app,

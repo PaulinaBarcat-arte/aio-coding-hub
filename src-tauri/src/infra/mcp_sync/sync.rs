@@ -12,6 +12,20 @@ use super::manifest::{backup_for_enable, read_manifest, write_manifest};
 use super::paths::{mcp_target_path, validate_cli_key};
 use super::McpServerForSync;
 
+fn build_next_bytes(
+    cli_key: &str,
+    current: Option<Vec<u8>>,
+    managed_keys: &[String],
+    servers: &[McpServerForSync],
+) -> Result<Vec<u8>, String> {
+    match cli_key {
+        "claude" => build_claude_config_json(current, managed_keys, servers),
+        "codex" => build_codex_config_toml(current, managed_keys, servers),
+        "gemini" => build_gemini_settings_json(current, managed_keys, servers),
+        _ => Err(format!("SEC_INVALID_INPUT: unknown cli_key={cli_key}")),
+    }
+}
+
 fn normalized_keys(servers: &[McpServerForSync]) -> Vec<String> {
     let mut keys: Vec<String> = servers.iter().map(|s| s.server_key.to_string()).collect();
     keys.sort();
@@ -39,12 +53,7 @@ pub fn sync_cli(
                 let current = read_optional_file(&target_path)?;
                 if current.is_some() {
                     let managed_keys = manifest.managed_keys.clone();
-                    let next_bytes = match cli_key {
-                        "claude" => build_claude_config_json(current, &managed_keys, &[])?,
-                        "codex" => build_codex_config_toml(current, &managed_keys, &[])?,
-                        "gemini" => build_gemini_settings_json(current, &managed_keys, &[])?,
-                        _ => return Err(format!("SEC_INVALID_INPUT: unknown cli_key={cli_key}")),
-                    };
+                    let next_bytes = build_next_bytes(cli_key, current, &managed_keys, &[])?;
                     write_file_atomic_if_changed(&target_path, &next_bytes)?;
                 }
             }
@@ -82,12 +91,7 @@ pub fn sync_cli(
     let current = read_optional_file(&target_path)?;
     let managed_keys = manifest.managed_keys.clone();
 
-    let next_bytes = match cli_key {
-        "claude" => build_claude_config_json(current, &managed_keys, servers)?,
-        "codex" => build_codex_config_toml(current, &managed_keys, servers)?,
-        "gemini" => build_gemini_settings_json(current, &managed_keys, servers)?,
-        _ => return Err(format!("SEC_INVALID_INPUT: unknown cli_key={cli_key}")),
-    };
+    let next_bytes = build_next_bytes(cli_key, current, &managed_keys, servers)?;
 
     write_file_atomic_if_changed(&target_path, &next_bytes)?;
 

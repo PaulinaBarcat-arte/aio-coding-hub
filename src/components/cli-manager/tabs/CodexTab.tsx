@@ -716,6 +716,32 @@ export function CliManagerCodexTab({
                     disabled={saving}
                   />
                 </SettingItem>
+
+                <SettingItem
+                  label="collab"
+                  subtitle="Beta：启用多代理协作，允许代理间通过 spawn_agent/send_input/wait/close 工具协调工作。"
+                >
+                  <Switch
+                    checked={boolOrDefault(codexConfig.features_collab, false)}
+                    onCheckedChange={(checked) =>
+                      void persistCodexConfig({ features_collab: checked })
+                    }
+                    disabled={saving}
+                  />
+                </SettingItem>
+
+                <SettingItem
+                  label="collaboration_modes"
+                  subtitle="Beta：启用协作模式预设，TUI 中提供 Coding/Plan 模式选择与规划-执行阶段自动切换。"
+                >
+                  <Switch
+                    checked={boolOrDefault(codexConfig.features_collaboration_modes, false)}
+                    onCheckedChange={(checked) =>
+                      void persistCodexConfig({ features_collaboration_modes: checked })
+                    }
+                    disabled={saving}
+                  />
+                </SettingItem>
               </div>
             </div>
           </div>

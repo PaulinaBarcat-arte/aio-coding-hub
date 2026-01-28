@@ -12,7 +12,7 @@ mod success_non_stream;
 mod thinking_signature_rectifier_400;
 mod upstream_error;
 
-pub(super) use context::FailoverLoopInput;
+use super::super::request_context::RequestContext;
 use event_helpers::{
     emit_attempt_event_and_log, emit_attempt_event_and_log_with_circuit_before,
     AttemptCircuitFields,
@@ -40,8 +40,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::gateway::events::{
-    emit_attempt_event, emit_circuit_transition, emit_request_event, FailoverAttempt,
-    GatewayAttemptEvent,
+    emit_attempt_event, emit_request_event, FailoverAttempt, GatewayAttemptEvent,
 };
 use crate::gateway::response_fixer;
 use crate::gateway::streams::{
@@ -56,8 +55,8 @@ use crate::gateway::util::{
 
 use context::{AttemptCtx, CommonCtx, LoopControl, LoopState, ProviderCtx, MAX_NON_SSE_BODY_BYTES};
 
-pub(super) async fn run(input: FailoverLoopInput) -> Response {
-    let FailoverLoopInput {
+pub(super) async fn run(input: RequestContext) -> Response {
+    let RequestContext {
         state,
         cli_key,
         forwarded_path,

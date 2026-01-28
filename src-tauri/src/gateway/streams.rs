@@ -3,6 +3,8 @@
 mod types;
 pub(super) use types::StreamFinalizeCtx;
 
+mod finalize;
+
 mod relay;
 pub(super) use relay::{FirstChunkStream, RelayBodyStream};
 

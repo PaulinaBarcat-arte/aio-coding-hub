@@ -2,6 +2,7 @@
 
 use crate::db;
 use crate::prompt_sync;
+use crate::shared::sqlite::enabled_to_int;
 use crate::shared::time::now_unix_seconds;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
@@ -31,14 +32,6 @@ pub struct DefaultPromptSyncReport {
 
 fn validate_cli_key(cli_key: &str) -> Result<(), String> {
     crate::shared::cli_key::validate_cli_key(cli_key)
-}
-
-fn enabled_to_int(enabled: bool) -> i64 {
-    if enabled {
-        1
-    } else {
-        0
-    }
 }
 
 fn row_to_summary(row: &rusqlite::Row<'_>) -> Result<PromptSummary, rusqlite::Error> {

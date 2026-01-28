@@ -8,18 +8,6 @@ pub(super) fn now_unix_nanos() -> u128 {
         .unwrap_or(0)
 }
 
-pub(super) fn enabled_to_int(enabled: bool) -> i64 {
-    if enabled {
-        1
-    } else {
-        0
-    }
-}
-
-pub(super) fn normalize_name(name: &str) -> String {
-    name.trim().to_lowercase()
-}
-
 pub(super) fn validate_relative_subdir(subdir: &str) -> Result<(), String> {
     let subdir = subdir.trim();
     if subdir.is_empty() {

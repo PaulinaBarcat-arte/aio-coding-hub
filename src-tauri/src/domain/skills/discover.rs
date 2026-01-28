@@ -3,8 +3,8 @@ use super::installed::installed_source_set;
 use super::repo_cache::ensure_repo_cache;
 use super::skill_md::{find_skill_md_files, parse_skill_md};
 use super::types::AvailableSkillSummary;
-use super::util::normalize_name;
 use crate::db;
+use crate::shared::text::normalize_name;
 use std::collections::{BTreeMap, HashSet};
 
 pub fn discover_available(

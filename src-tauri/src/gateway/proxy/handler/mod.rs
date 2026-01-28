@@ -2,12 +2,10 @@
 //!
 //! Note: this module is being split into smaller submodules under `handler/`.
 
-mod failover_loop;
-
 use super::caches::RECENT_TRACE_DEDUP_TTL_SECS;
 use super::logging::enqueue_request_log_with_backpressure;
+use super::request_context::{RequestContext, RequestContextParts};
 use super::{
-    abort_guard::RequestAbortGuard,
     cli_proxy_guard::cli_proxy_enabled_cached,
     errors::{error_response, error_response_with_retry_after},
     failover::{select_next_provider_id_from_order, should_reuse_provider},
@@ -23,7 +21,7 @@ use axum::{
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use super::super::codex_session_id;
 use super::super::events::{emit_gateway_log, emit_request_event, emit_request_start_event};
@@ -32,7 +30,7 @@ use super::super::response_fixer;
 use super::super::util::{
     body_for_introspection, compute_all_providers_unavailable_fingerprint,
     compute_request_fingerprint, extract_idempotency_key_hash, infer_requested_model_info,
-    new_trace_id, now_unix_millis, now_unix_seconds, strip_hop_headers, MAX_REQUEST_BODY_BYTES,
+    new_trace_id, now_unix_millis, now_unix_seconds, MAX_REQUEST_BODY_BYTES,
 };
 use super::super::warmup;
 
@@ -689,31 +687,8 @@ pub(in crate::gateway) async fn proxy_impl(
         created_at,
     );
 
-    let abort_guard = RequestAbortGuard::new(
-        state.app.clone(),
-        state.db.clone(),
-        state.log_tx.clone(),
-        trace_id.clone(),
-        cli_key.clone(),
-        method_hint.clone(),
-        forwarded_path.clone(),
-        query.clone(),
-        created_at_ms,
-        created_at,
-        started,
-    );
-
-    let mut base_headers = headers;
-    strip_hop_headers(&mut base_headers);
-    base_headers.remove(header::HOST);
-    base_headers.remove(header::CONTENT_LENGTH);
-    base_headers.insert(
-        header::ACCEPT_ENCODING,
-        HeaderValue::from_static("identity"),
-    );
-
     let (
-        mut max_attempts_per_provider,
+        max_attempts_per_provider,
         max_providers_to_try,
         provider_cooldown_secs,
         upstream_first_byte_timeout_secs,
@@ -738,32 +713,7 @@ pub(in crate::gateway) async fn proxy_impl(
         ),
     };
 
-    if cli_key == "claude" && enable_thinking_signature_rectifier {
-        max_attempts_per_provider = max_attempts_per_provider.max(2);
-    }
-
-    let upstream_first_byte_timeout = if upstream_first_byte_timeout_secs == 0 {
-        None
-    } else {
-        Some(Duration::from_secs(upstream_first_byte_timeout_secs as u64))
-    };
-    let upstream_stream_idle_timeout = if upstream_stream_idle_timeout_secs == 0 {
-        None
-    } else {
-        Some(Duration::from_secs(
-            upstream_stream_idle_timeout_secs as u64,
-        ))
-    };
-    let upstream_request_timeout_non_streaming = if upstream_request_timeout_non_streaming_secs == 0
-    {
-        None
-    } else {
-        Some(Duration::from_secs(
-            upstream_request_timeout_non_streaming_secs as u64,
-        ))
-    };
-
-    failover_loop::run(failover_loop::FailoverLoopInput {
+    super::forwarder::forward(RequestContext::from_handler_parts(RequestContextParts {
         state,
         cli_key,
         forwarded_path,
@@ -780,7 +730,7 @@ pub(in crate::gateway) async fn proxy_impl(
         effective_sort_mode_id,
         providers,
         session_bound_provider_id,
-        base_headers,
+        headers,
         body_bytes,
         introspection_json,
         strip_request_content_encoding_seed,
@@ -790,18 +740,16 @@ pub(in crate::gateway) async fn proxy_impl(
         max_providers_to_try,
         provider_cooldown_secs,
         upstream_first_byte_timeout_secs,
-        upstream_first_byte_timeout,
-        upstream_stream_idle_timeout,
-        upstream_request_timeout_non_streaming,
+        upstream_stream_idle_timeout_secs,
+        upstream_request_timeout_non_streaming_secs,
         fingerprint_key,
         fingerprint_debug,
         unavailable_fingerprint_key,
         unavailable_fingerprint_debug,
-        abort_guard,
         enable_thinking_signature_rectifier,
         enable_response_fixer,
         response_fixer_stream_config,
         response_fixer_non_stream_config,
-    })
+    }))
     .await
 }

@@ -5,11 +5,15 @@ mod caches;
 mod cli_proxy_guard;
 mod errors;
 mod failover;
+mod forwarder;
 mod handler;
 mod http_util;
 mod logging;
 mod model_rewrite;
+pub(in crate::gateway) mod provider_router;
+mod request_context;
 mod types;
+mod upstream_client_error_rules;
 
 pub(super) use caches::{ProviderBaseUrlPingCache, RecentErrorCache};
 pub(in crate::gateway) use logging::spawn_enqueue_request_log_with_backpressure;

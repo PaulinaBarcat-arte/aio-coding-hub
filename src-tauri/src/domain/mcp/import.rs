@@ -1,13 +1,15 @@
 //! Usage: MCP server import/export parsing and DB import.
 
+use crate::db;
 use crate::shared::time::now_unix_seconds;
-use crate::{db, mcp_sync};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use super::backups::CliBackupSnapshots;
 use super::db::upsert_by_name;
 use super::sync::sync_all_cli;
 use super::types::{McpImportReport, McpImportServer, McpParseResult};
-use super::validate::{normalize_name, suggest_key};
+use super::validate::suggest_key;
+use crate::shared::text::normalize_name;
 
 fn is_code_switch_r_shape(root: &serde_json::Value) -> bool {
     root.get("claude").is_some() || root.get("codex").is_some() || root.get("gemini").is_some()
@@ -276,12 +278,7 @@ pub fn import_servers(
         .transaction()
         .map_err(|e| format!("DB_ERROR: failed to start transaction: {e}"))?;
 
-    let prev_claude_target = mcp_sync::read_target_bytes(app, "claude")?;
-    let prev_claude_manifest = mcp_sync::read_manifest_bytes(app, "claude")?;
-    let prev_codex_target = mcp_sync::read_target_bytes(app, "codex")?;
-    let prev_codex_manifest = mcp_sync::read_manifest_bytes(app, "codex")?;
-    let prev_gemini_target = mcp_sync::read_target_bytes(app, "gemini")?;
-    let prev_gemini_manifest = mcp_sync::read_manifest_bytes(app, "gemini")?;
+    let snapshots = CliBackupSnapshots::capture_all(app)?;
 
     let mut inserted = 0u32;
     let mut updated = 0u32;
@@ -311,22 +308,12 @@ pub fn import_servers(
     }
 
     if let Err(err) = sync_all_cli(app, &tx) {
-        let _ = mcp_sync::restore_target_bytes(app, "claude", prev_claude_target);
-        let _ = mcp_sync::restore_manifest_bytes(app, "claude", prev_claude_manifest);
-        let _ = mcp_sync::restore_target_bytes(app, "codex", prev_codex_target);
-        let _ = mcp_sync::restore_manifest_bytes(app, "codex", prev_codex_manifest);
-        let _ = mcp_sync::restore_target_bytes(app, "gemini", prev_gemini_target);
-        let _ = mcp_sync::restore_manifest_bytes(app, "gemini", prev_gemini_manifest);
+        snapshots.restore_all(app);
         return Err(err);
     }
 
     if let Err(err) = tx.commit() {
-        let _ = mcp_sync::restore_target_bytes(app, "claude", prev_claude_target);
-        let _ = mcp_sync::restore_manifest_bytes(app, "claude", prev_claude_manifest);
-        let _ = mcp_sync::restore_target_bytes(app, "codex", prev_codex_target);
-        let _ = mcp_sync::restore_manifest_bytes(app, "codex", prev_codex_manifest);
-        let _ = mcp_sync::restore_target_bytes(app, "gemini", prev_gemini_target);
-        let _ = mcp_sync::restore_manifest_bytes(app, "gemini", prev_gemini_manifest);
+        snapshots.restore_all(app);
         return Err(format!("DB_ERROR: failed to commit: {err}"));
     }
 

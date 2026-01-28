@@ -5,10 +5,6 @@ use crate::circuit_breaker;
 use crate::gateway::events::FailoverAttempt;
 use crate::gateway::manager::GatewayAppState;
 use crate::gateway::response_fixer;
-use crate::gateway::util::RequestedModelLocation;
-use crate::providers;
-use axum::body::Bytes;
-use axum::http::{HeaderMap, Method};
 use axum::response::Response;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -74,45 +70,4 @@ pub(super) enum LoopControl {
     ContinueRetry,
     BreakRetry,
     Return(Response),
-}
-
-pub(in super::super) struct FailoverLoopInput {
-    pub(in super::super) state: GatewayAppState,
-    pub(in super::super) cli_key: String,
-    pub(in super::super) forwarded_path: String,
-    pub(in super::super) req_method: Method,
-    pub(in super::super) method_hint: String,
-    pub(in super::super) query: Option<String>,
-    pub(in super::super) trace_id: String,
-    pub(in super::super) started: Instant,
-    pub(in super::super) created_at_ms: i64,
-    pub(in super::super) created_at: i64,
-    pub(in super::super) session_id: Option<String>,
-    pub(in super::super) requested_model: Option<String>,
-    pub(in super::super) requested_model_location: Option<RequestedModelLocation>,
-    pub(in super::super) effective_sort_mode_id: Option<i64>,
-    pub(in super::super) providers: Vec<providers::ProviderForGateway>,
-    pub(in super::super) session_bound_provider_id: Option<i64>,
-    pub(in super::super) base_headers: HeaderMap,
-    pub(in super::super) body_bytes: Bytes,
-    pub(in super::super) introspection_json: Option<serde_json::Value>,
-    pub(in super::super) strip_request_content_encoding_seed: bool,
-    pub(in super::super) special_settings: Arc<Mutex<Vec<serde_json::Value>>>,
-    pub(in super::super) provider_base_url_ping_cache_ttl_seconds: u32,
-    pub(in super::super) max_attempts_per_provider: u32,
-    pub(in super::super) max_providers_to_try: u32,
-    pub(in super::super) provider_cooldown_secs: i64,
-    pub(in super::super) upstream_first_byte_timeout_secs: u32,
-    pub(in super::super) upstream_first_byte_timeout: Option<Duration>,
-    pub(in super::super) upstream_stream_idle_timeout: Option<Duration>,
-    pub(in super::super) upstream_request_timeout_non_streaming: Option<Duration>,
-    pub(in super::super) fingerprint_key: u64,
-    pub(in super::super) fingerprint_debug: String,
-    pub(in super::super) unavailable_fingerprint_key: u64,
-    pub(in super::super) unavailable_fingerprint_debug: String,
-    pub(in super::super) abort_guard: RequestAbortGuard,
-    pub(in super::super) enable_thinking_signature_rectifier: bool,
-    pub(in super::super) enable_response_fixer: bool,
-    pub(in super::super) response_fixer_stream_config: response_fixer::ResponseFixerConfig,
-    pub(in super::super) response_fixer_non_stream_config: response_fixer::ResponseFixerConfig,
 }

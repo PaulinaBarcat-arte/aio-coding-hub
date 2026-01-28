@@ -1,5 +1,7 @@
 //! Usage: MCP server management (DB persistence + import/export + sync integration).
 
+mod backups;
+mod cli_specs;
 mod db;
 mod import;
 mod sync;

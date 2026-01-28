@@ -43,6 +43,8 @@ pub struct CodexConfigState {
     pub features_remote_models: Option<bool>,
     pub features_powershell_utf8: Option<bool>,
     pub features_child_agents_md: Option<bool>,
+    pub features_collab: Option<bool>,
+    pub features_collaboration_modes: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -77,6 +79,8 @@ pub struct CodexConfigPatch {
     pub features_remote_models: Option<bool>,
     pub features_powershell_utf8: Option<bool>,
     pub features_child_agents_md: Option<bool>,
+    pub features_collab: Option<bool>,
+    pub features_collaboration_modes: Option<bool>,
 }
 
 fn is_symlink(path: &Path) -> Result<bool, String> {
@@ -538,7 +542,7 @@ enum TableStyle {
     Dotted,
 }
 
-const FEATURES_KEY_ORDER: [&str; 12] = [
+const FEATURES_KEY_ORDER: [&str; 14] = [
     // Keep in sync with the UI order (CliManagerCodexTab / Features section).
     "shell_snapshot",
     "web_search_request",
@@ -552,6 +556,8 @@ const FEATURES_KEY_ORDER: [&str; 12] = [
     "child_agents_md",
     "experimental_windows_sandbox",
     "elevated_windows_sandbox",
+    "collab",
+    "collaboration_modes",
 ];
 
 fn table_style(lines: &[String], table: &str) -> TableStyle {
@@ -898,6 +904,8 @@ fn make_state_from_bytes(
         features_remote_models: None,
         features_powershell_utf8: None,
         features_child_agents_md: None,
+        features_collab: None,
+        features_collaboration_modes: None,
     };
 
     let Some(bytes) = bytes else {
@@ -1010,6 +1018,10 @@ fn make_state_from_bytes(
             }
             ("features", "child_agents_md") => {
                 state.features_child_agents_md = parse_bool(&raw_value)
+            }
+            ("features", "collab") => state.features_collab = parse_bool(&raw_value),
+            ("features", "collaboration_modes") => {
+                state.features_collaboration_modes = parse_bool(&raw_value)
             }
 
             _ => {}
@@ -1238,7 +1250,9 @@ fn patch_config_toml(current: Option<Vec<u8>>, patch: CodexConfigPatch) -> Resul
         || patch.features_remote_compaction.is_some()
         || patch.features_remote_models.is_some()
         || patch.features_powershell_utf8.is_some()
-        || patch.features_child_agents_md.is_some();
+        || patch.features_child_agents_md.is_some()
+        || patch.features_collab.is_some()
+        || patch.features_collaboration_modes.is_some();
 
     if has_any_feature_patch {
         let mut items: Vec<(&str, Option<String>)> = Vec::new();
@@ -1282,6 +1296,12 @@ fn patch_config_toml(current: Option<Vec<u8>>, patch: CodexConfigPatch) -> Resul
         }
         if let Some(v) = patch.features_child_agents_md {
             items.push(("child_agents_md", v.then(|| "true".to_string())));
+        }
+        if let Some(v) = patch.features_collab {
+            items.push(("collab", v.then(|| "true".to_string())));
+        }
+        if let Some(v) = patch.features_collaboration_modes {
+            items.push(("collaboration_modes", v.then(|| "true".to_string())));
         }
 
         upsert_keys_auto_style(&mut lines, "features", &FEATURES_KEY_ORDER, items);

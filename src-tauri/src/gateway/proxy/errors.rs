@@ -48,20 +48,31 @@ pub(super) fn classify_upstream_status(
             "GW_UPSTREAM_4XX",
             FailoverDecision::SwitchProvider,
         ),
+        402 => (
+            // Payment Required / insufficient balance / subscription required.
+            // Align with claude-code-hub: treat as provider-side limitation and allow failover.
+            ErrorCategory::ProviderError,
+            "GW_UPSTREAM_4XX",
+            FailoverDecision::SwitchProvider,
+        ),
+        404 => (
+            // Resource not found is often provider-specific (path/model support mismatch).
+            // Align with claude-code-hub: switch provider (do not abort the whole request).
+            ErrorCategory::ResourceNotFound,
+            "GW_UPSTREAM_4XX",
+            FailoverDecision::SwitchProvider,
+        ),
         408 | 429 => (
             ErrorCategory::ProviderError,
             "GW_UPSTREAM_4XX",
             FailoverDecision::RetrySameProvider,
         ),
-        404 => (
-            ErrorCategory::ResourceNotFound,
-            "GW_UPSTREAM_4XX",
-            FailoverDecision::Abort,
-        ),
         _ if status.is_client_error() => (
-            ErrorCategory::NonRetryableClientError,
+            // Default: allow retry + failover for upstream 4xx.
+            // Non-retryable client input errors are detected separately by scanning upstream error bodies.
+            ErrorCategory::ProviderError,
             "GW_UPSTREAM_4XX",
-            FailoverDecision::Abort,
+            FailoverDecision::RetrySameProvider,
         ),
         _ => (
             ErrorCategory::ProviderError,
@@ -111,4 +122,36 @@ pub(super) fn error_response_with_retry_after(
     }
 
     resp
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{classify_upstream_status, FailoverDecision};
+    use crate::gateway::proxy::ErrorCategory;
+
+    #[test]
+    fn upstream_402_switches_provider() {
+        let (category, code, decision) =
+            classify_upstream_status(reqwest::StatusCode::PAYMENT_REQUIRED);
+        assert!(matches!(category, ErrorCategory::ProviderError));
+        assert_eq!(code, "GW_UPSTREAM_4XX");
+        assert!(matches!(decision, FailoverDecision::SwitchProvider));
+    }
+
+    #[test]
+    fn upstream_404_switches_provider() {
+        let (category, code, decision) = classify_upstream_status(reqwest::StatusCode::NOT_FOUND);
+        assert!(matches!(category, ErrorCategory::ResourceNotFound));
+        assert_eq!(code, "GW_UPSTREAM_4XX");
+        assert!(matches!(decision, FailoverDecision::SwitchProvider));
+    }
+
+    #[test]
+    fn upstream_other_4xx_retries_then_failover() {
+        let (category, code, decision) =
+            classify_upstream_status(reqwest::StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(matches!(category, ErrorCategory::ProviderError));
+        assert_eq!(code, "GW_UPSTREAM_4XX");
+        assert!(matches!(decision, FailoverDecision::RetrySameProvider));
+    }
 }

@@ -1,71 +1,17 @@
 //! Usage: MCP server persistence (SQLite) and sync integration hooks.
 
+use crate::db;
 use crate::shared::time::now_unix_seconds;
-use crate::{db, mcp_sync};
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 use std::collections::BTreeMap;
 
+use super::backups::{CliBackupSnapshots, SingleCliBackup};
+use super::cli_specs::spec_for_cli_key;
 use super::sync::{sync_all_cli, sync_one_cli};
 use super::types::{McpImportServer, McpServerSummary};
-use super::validate::{
-    enabled_to_int, normalize_name, suggest_key, validate_cli_key, validate_server_key,
-    validate_transport,
-};
-
-/// CLI file backup snapshots for rollback on error.
-struct CliBackupSnapshots {
-    claude: (Option<Vec<u8>>, Option<Vec<u8>>),
-    codex: (Option<Vec<u8>>, Option<Vec<u8>>),
-    gemini: (Option<Vec<u8>>, Option<Vec<u8>>),
-}
-
-impl CliBackupSnapshots {
-    fn capture_all(app: &tauri::AppHandle) -> Result<Self, String> {
-        Ok(Self {
-            claude: (
-                mcp_sync::read_target_bytes(app, "claude")?,
-                mcp_sync::read_manifest_bytes(app, "claude")?,
-            ),
-            codex: (
-                mcp_sync::read_target_bytes(app, "codex")?,
-                mcp_sync::read_manifest_bytes(app, "codex")?,
-            ),
-            gemini: (
-                mcp_sync::read_target_bytes(app, "gemini")?,
-                mcp_sync::read_manifest_bytes(app, "gemini")?,
-            ),
-        })
-    }
-
-    fn restore_all(self, app: &tauri::AppHandle) {
-        let _ = mcp_sync::restore_target_bytes(app, "claude", self.claude.0);
-        let _ = mcp_sync::restore_manifest_bytes(app, "claude", self.claude.1);
-        let _ = mcp_sync::restore_target_bytes(app, "codex", self.codex.0);
-        let _ = mcp_sync::restore_manifest_bytes(app, "codex", self.codex.1);
-        let _ = mcp_sync::restore_target_bytes(app, "gemini", self.gemini.0);
-        let _ = mcp_sync::restore_manifest_bytes(app, "gemini", self.gemini.1);
-    }
-}
-
-/// Single CLI file backup for rollback on error.
-struct SingleCliBackup {
-    target: Option<Vec<u8>>,
-    manifest: Option<Vec<u8>>,
-}
-
-impl SingleCliBackup {
-    fn capture(app: &tauri::AppHandle, cli_key: &str) -> Result<Self, String> {
-        Ok(Self {
-            target: mcp_sync::read_target_bytes(app, cli_key)?,
-            manifest: mcp_sync::read_manifest_bytes(app, cli_key)?,
-        })
-    }
-
-    fn restore(self, app: &tauri::AppHandle, cli_key: &str) {
-        let _ = mcp_sync::restore_target_bytes(app, cli_key, self.target);
-        let _ = mcp_sync::restore_manifest_bytes(app, cli_key, self.manifest);
-    }
-}
+use super::validate::{suggest_key, validate_cli_key, validate_server_key, validate_transport};
+use crate::shared::sqlite::enabled_to_int;
+use crate::shared::text::normalize_name;
 
 fn server_key_exists(conn: &Connection, server_key: &str) -> Result<bool, String> {
     let exists: Option<i64> = conn
@@ -431,12 +377,7 @@ pub fn set_enabled(
 
     let backup = SingleCliBackup::capture(app, cli_key)?;
 
-    let column = match cli_key {
-        "claude" => "enabled_claude",
-        "codex" => "enabled_codex",
-        "gemini" => "enabled_gemini",
-        _ => return Err(format!("SEC_INVALID_INPUT: unknown cli_key={cli_key}")),
-    };
+    let column = spec_for_cli_key(cli_key)?.enabled_column;
 
     let sql = format!("UPDATE mcp_servers SET {column} = ?1, updated_at = ?2 WHERE id = ?3");
     let changed = tx

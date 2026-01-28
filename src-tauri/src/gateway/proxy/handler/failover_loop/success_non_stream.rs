@@ -1,5 +1,6 @@
 //! Usage: Handle successful non-SSE upstream responses inside `failover_loop::run`.
 
+use super::super::super::provider_router;
 use super::*;
 
 pub(super) async fn handle_success_non_stream(
@@ -360,10 +361,12 @@ pub(super) async fn handle_success_non_stream(
                 )
             {
                 let now_unix = now_unix_seconds() as i64;
-                let snap =
-                    state
-                        .circuit
-                        .trigger_cooldown(provider_id, now_unix, provider_cooldown_secs);
+                let snap = provider_router::trigger_cooldown(
+                    state.circuit.as_ref(),
+                    provider_id,
+                    now_unix,
+                    provider_cooldown_secs,
+                );
                 *circuit_snapshot = snap;
             }
 
@@ -468,19 +471,17 @@ pub(super) async fn handle_success_non_stream(
 
     if out.status() == status {
         let now_unix = now_unix_seconds() as i64;
-        let change = state.circuit.record_success(provider_id, now_unix);
-        if let Some(t) = change.transition {
-            emit_circuit_transition(
-                &state.app,
-                &trace_id,
-                &cli_key,
+        let change = provider_router::record_success_and_emit_transition(
+            provider_router::RecordCircuitArgs::from_state(
+                state,
+                trace_id.as_str(),
+                cli_key.as_str(),
                 provider_id,
-                &provider_name_base,
-                &provider_base_url_base,
-                &t,
+                provider_name_base.as_str(),
+                provider_base_url_base.as_str(),
                 now_unix,
-            );
-        }
+            ),
+        );
         if let Some(last) = attempts.last_mut() {
             last.circuit_state_after = Some(change.after.state.as_str());
             last.circuit_failure_count = Some(change.after.failure_count);

@@ -1,6 +1,7 @@
 //! Usage: Provider configuration persistence and gateway selection helpers.
 
 use crate::db;
+use crate::shared::sqlite::enabled_to_int;
 use crate::shared::time::now_unix_seconds;
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -160,14 +161,6 @@ pub(crate) struct GatewayProvidersSelection {
 
 fn validate_cli_key(cli_key: &str) -> Result<(), String> {
     crate::shared::cli_key::validate_cli_key(cli_key)
-}
-
-fn enabled_to_int(enabled: bool) -> i64 {
-    if enabled {
-        1
-    } else {
-        0
-    }
 }
 
 fn normalize_base_urls(base_urls: Vec<String>) -> Result<Vec<String>, String> {

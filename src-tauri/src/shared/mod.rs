@@ -5,4 +5,6 @@ pub(crate) mod circuit_breaker;
 pub(crate) mod cli_key;
 pub(crate) mod fs;
 pub(crate) mod mutex_ext;
+pub(crate) mod sqlite;
+pub(crate) mod text;
 pub(crate) mod time;

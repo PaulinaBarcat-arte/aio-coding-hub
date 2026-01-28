@@ -1,7 +1,7 @@
 use super::git_url::{canonical_git_url_key, normalize_repo_branch};
 use super::types::SkillRepoSummary;
-use super::util::enabled_to_int;
 use crate::db;
+use crate::shared::sqlite::enabled_to_int;
 use crate::shared::time::now_unix_seconds;
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashSet;

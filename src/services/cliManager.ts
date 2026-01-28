@@ -135,6 +135,8 @@ export type CodexConfigState = {
   features_remote_models: boolean | null;
   features_powershell_utf8: boolean | null;
   features_child_agents_md: boolean | null;
+  features_collab: boolean | null;
+  features_collaboration_modes: boolean | null;
 };
 
 export type CodexConfigPatch = Partial<{
@@ -168,6 +170,8 @@ export type CodexConfigPatch = Partial<{
   features_remote_models: boolean;
   features_powershell_utf8: boolean;
   features_child_agents_md: boolean;
+  features_collab: boolean;
+  features_collaboration_modes: boolean;
 }>;
 
 export async function cliManagerClaudeInfoGet() {
