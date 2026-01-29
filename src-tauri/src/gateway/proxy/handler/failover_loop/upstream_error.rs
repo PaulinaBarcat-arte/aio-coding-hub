@@ -11,15 +11,13 @@ use super::super::super::http_util::{
 use super::super::super::provider_router;
 use super::super::super::upstream_client_error_rules;
 use super::super::super::ErrorCategory;
+use super::attempt_record::{record_system_failure_and_decide, RecordSystemFailureArgs};
 use super::context::{
     AttemptCtx, CommonCtx, CommonCtxOwned, LoopControl, LoopState, ProviderCtx,
     MAX_NON_SSE_BODY_BYTES,
 };
 use super::thinking_signature_rectifier_400;
-use super::{
-    emit_attempt_event_and_log, emit_attempt_event_and_log_with_circuit_before,
-    AttemptCircuitFields,
-};
+use super::{emit_attempt_event_and_log, AttemptCircuitFields};
 use super::{emit_request_event_and_enqueue_request_log, RequestEndArgs};
 use crate::circuit_breaker;
 use crate::gateway::events::FailoverAttempt;
@@ -396,36 +394,10 @@ pub(super) async fn handle_reqwest_error(
     loop_state: LoopState<'_>,
     err: reqwest::Error,
 ) -> LoopControl {
-    let state = ctx.state;
-    let provider_cooldown_secs = ctx.provider_cooldown_secs;
     let max_attempts_per_provider = ctx.max_attempts_per_provider;
 
-    let ProviderCtx {
-        provider_id,
-        provider_name_base,
-        provider_base_url_base,
-        provider_index,
-        session_reuse,
-    } = provider_ctx;
-
-    let AttemptCtx {
-        attempt_index: _,
-        retry_index,
-        attempt_started_ms,
-        attempt_started,
-        circuit_before,
-    } = attempt_ctx;
-
-    let LoopState {
-        attempts,
-        failed_provider_ids,
-        last_error_category,
-        last_error_code,
-        circuit_snapshot: _,
-        abort_guard: _,
-    } = loop_state;
-
-    let (category, error_code) = classify_reqwest_error(&err);
+    let (_, error_code) = classify_reqwest_error(&err);
+    let retry_index = attempt_ctx.retry_index;
     let decision = if retry_index < max_attempts_per_provider {
         FailoverDecision::RetrySameProvider
     } else {
@@ -434,59 +406,21 @@ pub(super) async fn handle_reqwest_error(
 
     let outcome = format!(
         "request_error: category={} code={} decision={} err={err}",
-        category.as_str(),
+        ErrorCategory::SystemError.as_str(),
         error_code,
         decision.as_str(),
     );
 
-    attempts.push(FailoverAttempt {
-        provider_id,
-        provider_name: provider_name_base.clone(),
-        base_url: provider_base_url_base.clone(),
-        outcome: outcome.clone(),
+    record_system_failure_and_decide(RecordSystemFailureArgs {
+        ctx,
+        provider_ctx,
+        attempt_ctx,
+        loop_state,
         status: None,
-        provider_index: Some(provider_index),
-        retry_index: Some(retry_index),
-        session_reuse,
-        error_category: Some(category.as_str()),
-        error_code: Some(error_code),
-        decision: Some(decision.as_str()),
-        reason: Some("reqwest error".to_string()),
-        attempt_started_ms: Some(attempt_started_ms),
-        attempt_duration_ms: Some(attempt_started.elapsed().as_millis()),
-        circuit_state_before: Some(circuit_before.state.as_str()),
-        circuit_state_after: None,
-        circuit_failure_count: Some(circuit_before.failure_count),
-        circuit_failure_threshold: Some(circuit_before.failure_threshold),
-    });
-
-    emit_attempt_event_and_log_with_circuit_before(ctx, provider_ctx, attempt_ctx, outcome, None)
-        .await;
-
-    *last_error_category = Some(category.as_str());
-    *last_error_code = Some(error_code);
-
-    if provider_cooldown_secs > 0
-        && matches!(
-            decision,
-            FailoverDecision::SwitchProvider | FailoverDecision::Abort
-        )
-    {
-        let now_unix = now_unix_seconds() as i64;
-        provider_router::trigger_cooldown(
-            state.circuit.as_ref(),
-            provider_id,
-            now_unix,
-            provider_cooldown_secs,
-        );
-    }
-
-    match decision {
-        FailoverDecision::RetrySameProvider => LoopControl::ContinueRetry,
-        FailoverDecision::SwitchProvider => {
-            failed_provider_ids.insert(provider_id);
-            LoopControl::BreakRetry
-        }
-        FailoverDecision::Abort => LoopControl::BreakRetry,
-    }
+        error_code,
+        decision,
+        outcome,
+        reason: "reqwest error".to_string(),
+    })
+    .await
 }

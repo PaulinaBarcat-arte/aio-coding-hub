@@ -1,5 +1,6 @@
 //! Usage: Gateway proxy failover loop (provider iteration + retries + upstream response handling).
 
+mod attempt_record;
 mod claude_model_mapping;
 mod context;
 mod event_helpers;
@@ -14,6 +15,7 @@ mod thinking_signature_rectifier_400;
 mod upstream_error;
 
 use super::super::request_context::RequestContext;
+use attempt_record::{record_system_failure_and_decide, RecordSystemFailureArgs};
 use event_helpers::{
     emit_attempt_event_and_log, emit_attempt_event_and_log_with_circuit_before,
     AttemptCircuitFields,

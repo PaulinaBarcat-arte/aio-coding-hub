@@ -1,6 +1,5 @@
 //! Usage: Handle successful event-stream upstream responses inside `failover_loop::run`.
 
-use super::super::super::provider_router;
 use super::*;
 
 pub(super) async fn handle_success_event_stream(
@@ -15,9 +14,7 @@ pub(super) async fn handle_success_event_stream(
     let common = CommonCtxOwned::from(ctx);
     let provider_ctx_owned = ProviderCtxOwned::from(provider_ctx);
 
-    let state = common.state;
     let started = common.started;
-    let provider_cooldown_secs = common.provider_cooldown_secs;
     let upstream_first_byte_timeout_secs = common.upstream_first_byte_timeout_secs;
     let upstream_first_byte_timeout = common.upstream_first_byte_timeout;
     let upstream_stream_idle_timeout = common.upstream_stream_idle_timeout;
@@ -88,7 +85,6 @@ pub(super) async fn handle_success_event_stream(
                 initial_first_byte_ms = ttfb_ms;
             }
             FirstChunkProbe::ReadError(err) => {
-                let category = ErrorCategory::SystemError;
                 let error_code = "GW_STREAM_ERROR";
                 let decision = if retry_index < max_attempts_per_provider {
                     FailoverDecision::RetrySameProvider
@@ -98,74 +94,33 @@ pub(super) async fn handle_success_event_stream(
 
                 let outcome = format!(
                     "stream_first_chunk_error: category={} code={} decision={} timeout_secs={}",
-                    category.as_str(),
+                    ErrorCategory::SystemError.as_str(),
                     error_code,
                     decision.as_str(),
                     upstream_first_byte_timeout_secs,
                 );
 
-                attempts.push(FailoverAttempt {
-                    provider_id,
-                    provider_name: provider_ctx_owned.provider_name_base.clone(),
-                    base_url: provider_ctx_owned.provider_base_url_base.clone(),
-                    outcome: outcome.clone(),
-                    status: Some(status.as_u16()),
-                    provider_index: Some(provider_index),
-                    retry_index: Some(retry_index),
-                    session_reuse,
-                    error_category: Some(category.as_str()),
-                    error_code: Some(error_code),
-                    decision: Some(decision.as_str()),
-                    reason: Some(format!("first chunk read error (event-stream): {err}")),
-                    attempt_started_ms: Some(attempt_started_ms),
-                    attempt_duration_ms: Some(attempt_started.elapsed().as_millis()),
-                    circuit_state_before: Some(circuit_before.state.as_str()),
-                    circuit_state_after: None,
-                    circuit_failure_count: Some(circuit_before.failure_count),
-                    circuit_failure_threshold: Some(circuit_before.failure_threshold),
-                });
-
-                emit_attempt_event_and_log_with_circuit_before(
+                return record_system_failure_and_decide(RecordSystemFailureArgs {
                     ctx,
                     provider_ctx,
                     attempt_ctx,
+                    loop_state: LoopState {
+                        attempts,
+                        failed_provider_ids,
+                        last_error_category,
+                        last_error_code,
+                        circuit_snapshot,
+                        abort_guard,
+                    },
+                    status: Some(status.as_u16()),
+                    error_code,
+                    decision,
                     outcome,
-                    Some(status.as_u16()),
-                )
+                    reason: format!("first chunk read error (event-stream): {err}"),
+                })
                 .await;
-
-                *last_error_category = Some(category.as_str());
-                *last_error_code = Some(error_code);
-
-                if provider_cooldown_secs > 0
-                    && matches!(
-                        decision,
-                        FailoverDecision::SwitchProvider | FailoverDecision::Abort
-                    )
-                {
-                    let now_unix = now_unix_seconds() as i64;
-                    let snap = provider_router::trigger_cooldown(
-                        state.circuit.as_ref(),
-                        provider_id,
-                        now_unix,
-                        provider_cooldown_secs,
-                    );
-                    *circuit_snapshot = snap;
-                }
-
-                match decision {
-                    FailoverDecision::RetrySameProvider => {
-                        return LoopControl::ContinueRetry;
-                    }
-                    FailoverDecision::SwitchProvider => {
-                        failed_provider_ids.insert(provider_id);
-                        return LoopControl::BreakRetry;
-                    }
-                    FailoverDecision::Abort => return LoopControl::BreakRetry,
-                }
             }
             FirstChunkProbe::Timeout => {
-                let category = ErrorCategory::SystemError;
                 let error_code = "GW_UPSTREAM_TIMEOUT";
                 let decision = if retry_index < max_attempts_per_provider {
                     FailoverDecision::RetrySameProvider
@@ -175,71 +130,31 @@ pub(super) async fn handle_success_event_stream(
 
                 let outcome = format!(
                     "stream_first_byte_timeout: category={} code={} decision={} timeout_secs={}",
-                    category.as_str(),
+                    ErrorCategory::SystemError.as_str(),
                     error_code,
                     decision.as_str(),
                     upstream_first_byte_timeout_secs,
                 );
 
-                attempts.push(FailoverAttempt {
-                    provider_id,
-                    provider_name: provider_ctx_owned.provider_name_base.clone(),
-                    base_url: provider_ctx_owned.provider_base_url_base.clone(),
-                    outcome: outcome.clone(),
-                    status: Some(status.as_u16()),
-                    provider_index: Some(provider_index),
-                    retry_index: Some(retry_index),
-                    session_reuse,
-                    error_category: Some(category.as_str()),
-                    error_code: Some(error_code),
-                    decision: Some(decision.as_str()),
-                    reason: Some("first byte timeout (event-stream)".to_string()),
-                    attempt_started_ms: Some(attempt_started_ms),
-                    attempt_duration_ms: Some(attempt_started.elapsed().as_millis()),
-                    circuit_state_before: Some(circuit_before.state.as_str()),
-                    circuit_state_after: None,
-                    circuit_failure_count: Some(circuit_before.failure_count),
-                    circuit_failure_threshold: Some(circuit_before.failure_threshold),
-                });
-
-                emit_attempt_event_and_log_with_circuit_before(
+                return record_system_failure_and_decide(RecordSystemFailureArgs {
                     ctx,
                     provider_ctx,
                     attempt_ctx,
+                    loop_state: LoopState {
+                        attempts,
+                        failed_provider_ids,
+                        last_error_category,
+                        last_error_code,
+                        circuit_snapshot,
+                        abort_guard,
+                    },
+                    status: Some(status.as_u16()),
+                    error_code,
+                    decision,
                     outcome,
-                    Some(status.as_u16()),
-                )
+                    reason: "first byte timeout (event-stream)".to_string(),
+                })
                 .await;
-
-                *last_error_category = Some(category.as_str());
-                *last_error_code = Some(error_code);
-
-                if provider_cooldown_secs > 0
-                    && matches!(
-                        decision,
-                        FailoverDecision::SwitchProvider | FailoverDecision::Abort
-                    )
-                {
-                    let now_unix = now_unix_seconds() as i64;
-                    let snap = provider_router::trigger_cooldown(
-                        state.circuit.as_ref(),
-                        provider_id,
-                        now_unix,
-                        provider_cooldown_secs,
-                    );
-                    *circuit_snapshot = snap;
-                }
-
-                match decision {
-                    FailoverDecision::RetrySameProvider => {
-                        return LoopControl::ContinueRetry;
-                    }
-                    FailoverDecision::SwitchProvider => {
-                        failed_provider_ids.insert(provider_id);
-                        return LoopControl::BreakRetry;
-                    }
-                    FailoverDecision::Abort => return LoopControl::BreakRetry,
-                }
             }
             FirstChunkProbe::Skipped => {}
         }
@@ -249,7 +164,6 @@ pub(super) async fn handle_success_event_stream(
             && initial_first_byte_ms.is_none()
             && probe_is_empty_event_stream
         {
-            let category = ErrorCategory::SystemError;
             let error_code = "GW_STREAM_ERROR";
             let decision = if retry_index < max_attempts_per_provider {
                 FailoverDecision::RetrySameProvider
@@ -259,71 +173,31 @@ pub(super) async fn handle_success_event_stream(
 
             let outcome = format!(
                 "stream_first_chunk_eof: category={} code={} decision={} timeout_secs={}",
-                category.as_str(),
+                ErrorCategory::SystemError.as_str(),
                 error_code,
                 decision.as_str(),
                 upstream_first_byte_timeout_secs,
             );
 
-            attempts.push(FailoverAttempt {
-                provider_id,
-                provider_name: provider_ctx_owned.provider_name_base.clone(),
-                base_url: provider_ctx_owned.provider_base_url_base.clone(),
-                outcome: outcome.clone(),
-                status: Some(status.as_u16()),
-                provider_index: Some(provider_index),
-                retry_index: Some(retry_index),
-                session_reuse,
-                error_category: Some(category.as_str()),
-                error_code: Some(error_code),
-                decision: Some(decision.as_str()),
-                reason: Some("upstream returned empty event-stream".to_string()),
-                attempt_started_ms: Some(attempt_started_ms),
-                attempt_duration_ms: Some(attempt_started.elapsed().as_millis()),
-                circuit_state_before: Some(circuit_before.state.as_str()),
-                circuit_state_after: None,
-                circuit_failure_count: Some(circuit_before.failure_count),
-                circuit_failure_threshold: Some(circuit_before.failure_threshold),
-            });
-
-            emit_attempt_event_and_log_with_circuit_before(
+            return record_system_failure_and_decide(RecordSystemFailureArgs {
                 ctx,
                 provider_ctx,
                 attempt_ctx,
+                loop_state: LoopState {
+                    attempts,
+                    failed_provider_ids,
+                    last_error_category,
+                    last_error_code,
+                    circuit_snapshot,
+                    abort_guard,
+                },
+                status: Some(status.as_u16()),
+                error_code,
+                decision,
                 outcome,
-                Some(status.as_u16()),
-            )
+                reason: "upstream returned empty event-stream".to_string(),
+            })
             .await;
-
-            *last_error_category = Some(category.as_str());
-            *last_error_code = Some(error_code);
-
-            if provider_cooldown_secs > 0
-                && matches!(
-                    decision,
-                    FailoverDecision::SwitchProvider | FailoverDecision::Abort
-                )
-            {
-                let now_unix = now_unix_seconds() as i64;
-                let snap = provider_router::trigger_cooldown(
-                    state.circuit.as_ref(),
-                    provider_id,
-                    now_unix,
-                    provider_cooldown_secs,
-                );
-                *circuit_snapshot = snap;
-            }
-
-            match decision {
-                FailoverDecision::RetrySameProvider => {
-                    return LoopControl::ContinueRetry;
-                }
-                FailoverDecision::SwitchProvider => {
-                    failed_provider_ids.insert(provider_id);
-                    return LoopControl::BreakRetry;
-                }
-                FailoverDecision::Abort => return LoopControl::BreakRetry,
-            }
         }
 
         let outcome = "success".to_string();

@@ -19,7 +19,6 @@ pub(super) async fn handle_success_non_stream(
     let started = common.started;
     let created_at_ms = common.created_at_ms;
     let created_at = common.created_at;
-    let provider_cooldown_secs = common.provider_cooldown_secs;
     let upstream_request_timeout_non_streaming = common.upstream_request_timeout_non_streaming;
     let max_attempts_per_provider = common.max_attempts_per_provider;
     let enable_response_fixer = common.enable_response_fixer;
@@ -247,7 +246,6 @@ pub(super) async fn handle_success_non_stream(
     let mut body_bytes = match bytes_result {
         Ok(b) => b,
         Err(kind) => {
-            let category = ErrorCategory::SystemError;
             let error_code = if kind == "timeout" {
                 "GW_UPSTREAM_TIMEOUT"
             } else {
@@ -261,70 +259,30 @@ pub(super) async fn handle_success_non_stream(
 
             let outcome = format!(
                 "upstream_body_error: category={} code={} decision={} kind={kind}",
-                category.as_str(),
+                ErrorCategory::SystemError.as_str(),
                 error_code,
                 decision.as_str(),
             );
 
-            attempts.push(FailoverAttempt {
-                provider_id,
-                provider_name: provider_ctx_owned.provider_name_base.clone(),
-                base_url: provider_ctx_owned.provider_base_url_base.clone(),
-                outcome: outcome.clone(),
-                status: Some(status.as_u16()),
-                provider_index: Some(provider_index),
-                retry_index: Some(retry_index),
-                session_reuse,
-                error_category: Some(category.as_str()),
-                error_code: Some(error_code),
-                decision: Some(decision.as_str()),
-                reason: Some("failed to read upstream body".to_string()),
-                attempt_started_ms: Some(attempt_started_ms),
-                attempt_duration_ms: Some(attempt_started.elapsed().as_millis()),
-                circuit_state_before: Some(circuit_before.state.as_str()),
-                circuit_state_after: None,
-                circuit_failure_count: Some(circuit_before.failure_count),
-                circuit_failure_threshold: Some(circuit_before.failure_threshold),
-            });
-
-            emit_attempt_event_and_log_with_circuit_before(
+            return record_system_failure_and_decide(RecordSystemFailureArgs {
                 ctx,
                 provider_ctx,
                 attempt_ctx,
+                loop_state: LoopState {
+                    attempts,
+                    failed_provider_ids,
+                    last_error_category,
+                    last_error_code,
+                    circuit_snapshot,
+                    abort_guard,
+                },
+                status: Some(status.as_u16()),
+                error_code,
+                decision,
                 outcome,
-                Some(status.as_u16()),
-            )
+                reason: "failed to read upstream body".to_string(),
+            })
             .await;
-
-            *last_error_category = Some(category.as_str());
-            *last_error_code = Some(error_code);
-
-            if provider_cooldown_secs > 0
-                && matches!(
-                    decision,
-                    FailoverDecision::SwitchProvider | FailoverDecision::Abort
-                )
-            {
-                let now_unix = now_unix_seconds() as i64;
-                let snap = provider_router::trigger_cooldown(
-                    state.circuit.as_ref(),
-                    provider_id,
-                    now_unix,
-                    provider_cooldown_secs,
-                );
-                *circuit_snapshot = snap;
-            }
-
-            match decision {
-                FailoverDecision::RetrySameProvider => {
-                    return LoopControl::ContinueRetry;
-                }
-                FailoverDecision::SwitchProvider => {
-                    failed_provider_ids.insert(provider_id);
-                    return LoopControl::BreakRetry;
-                }
-                FailoverDecision::Abort => return LoopControl::BreakRetry,
-            }
         }
     };
 
