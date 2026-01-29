@@ -12,36 +12,22 @@ pub(super) async fn handle_success_event_stream(
     status: StatusCode,
     mut response_headers: HeaderMap,
 ) -> LoopControl {
-    let state = ctx.state;
-    let cli_key = ctx.cli_key.to_string();
-    let method_hint = ctx.method_hint.to_string();
-    let forwarded_path = ctx.forwarded_path.to_string();
-    let query = ctx.query.clone();
-    let trace_id = ctx.trace_id.to_string();
-    let started = ctx.started;
-    let created_at_ms = ctx.created_at_ms;
-    let created_at = ctx.created_at;
-    let session_id = ctx.session_id.clone();
-    let requested_model = ctx.requested_model.clone();
-    let effective_sort_mode_id = ctx.effective_sort_mode_id;
-    let special_settings = Arc::clone(ctx.special_settings);
-    let provider_cooldown_secs = ctx.provider_cooldown_secs;
-    let upstream_first_byte_timeout_secs = ctx.upstream_first_byte_timeout_secs;
-    let upstream_first_byte_timeout = ctx.upstream_first_byte_timeout;
-    let upstream_stream_idle_timeout = ctx.upstream_stream_idle_timeout;
-    let max_attempts_per_provider = ctx.max_attempts_per_provider;
-    let enable_response_fixer = ctx.enable_response_fixer;
-    let response_fixer_stream_config = ctx.response_fixer_stream_config;
+    let common = CommonCtxOwned::from(ctx);
+    let provider_ctx_owned = ProviderCtxOwned::from(provider_ctx);
 
-    let ProviderCtx {
-        provider_id,
-        provider_name_base,
-        provider_base_url_base,
-        provider_index,
-        session_reuse,
-    } = provider_ctx;
-    let provider_name_base = provider_name_base.to_string();
-    let provider_base_url_base = provider_base_url_base.to_string();
+    let state = common.state;
+    let started = common.started;
+    let provider_cooldown_secs = common.provider_cooldown_secs;
+    let upstream_first_byte_timeout_secs = common.upstream_first_byte_timeout_secs;
+    let upstream_first_byte_timeout = common.upstream_first_byte_timeout;
+    let upstream_stream_idle_timeout = common.upstream_stream_idle_timeout;
+    let max_attempts_per_provider = common.max_attempts_per_provider;
+    let enable_response_fixer = common.enable_response_fixer;
+    let response_fixer_stream_config = common.response_fixer_stream_config;
+
+    let provider_id = provider_ctx_owned.provider_id;
+    let provider_index = provider_ctx_owned.provider_index;
+    let session_reuse = provider_ctx_owned.session_reuse;
 
     let AttemptCtx {
         attempt_index: _,
@@ -120,8 +106,8 @@ pub(super) async fn handle_success_event_stream(
 
                 attempts.push(FailoverAttempt {
                     provider_id,
-                    provider_name: provider_name_base.clone(),
-                    base_url: provider_base_url_base.clone(),
+                    provider_name: provider_ctx_owned.provider_name_base.clone(),
+                    base_url: provider_ctx_owned.provider_base_url_base.clone(),
                     outcome: outcome.clone(),
                     status: Some(status.as_u16()),
                     provider_index: Some(provider_index),
@@ -197,8 +183,8 @@ pub(super) async fn handle_success_event_stream(
 
                 attempts.push(FailoverAttempt {
                     provider_id,
-                    provider_name: provider_name_base.clone(),
-                    base_url: provider_base_url_base.clone(),
+                    provider_name: provider_ctx_owned.provider_name_base.clone(),
+                    base_url: provider_ctx_owned.provider_base_url_base.clone(),
                     outcome: outcome.clone(),
                     status: Some(status.as_u16()),
                     provider_index: Some(provider_index),
@@ -281,8 +267,8 @@ pub(super) async fn handle_success_event_stream(
 
             attempts.push(FailoverAttempt {
                 provider_id,
-                provider_name: provider_name_base.clone(),
-                base_url: provider_base_url_base.clone(),
+                provider_name: provider_ctx_owned.provider_name_base.clone(),
+                base_url: provider_ctx_owned.provider_base_url_base.clone(),
                 outcome: outcome.clone(),
                 status: Some(status.as_u16()),
                 provider_index: Some(provider_index),
@@ -344,8 +330,8 @@ pub(super) async fn handle_success_event_stream(
 
         attempts.push(FailoverAttempt {
             provider_id,
-            provider_name: provider_name_base.clone(),
-            base_url: provider_base_url_base.clone(),
+            provider_name: provider_ctx_owned.provider_name_base.clone(),
+            base_url: provider_ctx_owned.provider_base_url_base.clone(),
             outcome: outcome.clone(),
             status: Some(status.as_u16()),
             provider_index: Some(provider_index),
@@ -372,36 +358,14 @@ pub(super) async fn handle_success_event_stream(
         )
         .await;
 
-        let attempts_json = serde_json::to_string(&attempts).unwrap_or_else(|_| "[]".to_string());
-        let ctx = StreamFinalizeCtx {
-            app: state.app.clone(),
-            db: state.db.clone(),
-            log_tx: state.log_tx.clone(),
-            circuit: state.circuit.clone(),
-            session: state.session.clone(),
-            session_id: session_id.clone(),
-            sort_mode_id: effective_sort_mode_id,
-            trace_id: trace_id.clone(),
-            cli_key: cli_key.clone(),
-            method: method_hint.clone(),
-            path: forwarded_path.clone(),
-            query: query.clone(),
-            excluded_from_stats: false,
-            special_settings: special_settings.clone(),
-            status: status.as_u16(),
-            error_category: None,
-            error_code: None,
-            started,
-            attempts: attempts.clone(),
-            attempts_json,
-            requested_model: requested_model.clone(),
-            created_at_ms,
-            created_at,
-            provider_cooldown_secs,
-            provider_id,
-            provider_name: provider_name_base.clone(),
-            base_url: provider_base_url_base.clone(),
-        };
+        let ctx = build_stream_finalize_ctx(
+            &common,
+            &provider_ctx_owned,
+            attempts.as_slice(),
+            status.as_u16(),
+            None,
+            None,
+        );
 
         let should_gunzip = has_gzip_content_encoding(&response_headers);
         if should_gunzip {
@@ -421,7 +385,7 @@ pub(super) async fn handle_success_event_stream(
             );
         }
 
-        let use_sse_relay = cli_key == "codex" && forwarded_path == "/v1/responses";
+        let use_sse_relay = common.cli_key == "codex" && common.forwarded_path == "/v1/responses";
 
         let body = match (enable_response_fixer_for_this_response, should_gunzip) {
             (true, true) => {
@@ -430,7 +394,7 @@ pub(super) async fn handle_success_event_stream(
                 let upstream = response_fixer::ResponseFixerStream::new(
                     upstream,
                     response_fixer_stream_config,
-                    special_settings.clone(),
+                    common.special_settings.clone(),
                 );
                 if use_sse_relay {
                     spawn_usage_sse_relay_body(
@@ -454,7 +418,7 @@ pub(super) async fn handle_success_event_stream(
                 let upstream = response_fixer::ResponseFixerStream::new(
                     upstream,
                     response_fixer_stream_config,
-                    special_settings.clone(),
+                    common.special_settings.clone(),
                 );
                 if use_sse_relay {
                     spawn_usage_sse_relay_body(
@@ -518,7 +482,7 @@ pub(super) async fn handle_success_event_stream(
         for (k, v) in response_headers.iter() {
             builder = builder.header(k, v);
         }
-        builder = builder.header("x-trace-id", trace_id.as_str());
+        builder = builder.header("x-trace-id", common.trace_id.as_str());
 
         abort_guard.disarm();
         return LoopControl::Return(match builder.body(body) {
@@ -528,7 +492,8 @@ pub(super) async fn handle_success_event_stream(
                     (StatusCode::INTERNAL_SERVER_ERROR, "GW_RESPONSE_BUILD_ERROR").into_response();
                 fallback.headers_mut().insert(
                     "x-trace-id",
-                    HeaderValue::from_str(&trace_id).unwrap_or(HeaderValue::from_static("unknown")),
+                    HeaderValue::from_str(common.trace_id.as_str())
+                        .unwrap_or(HeaderValue::from_static("unknown")),
                 );
                 fallback
             }

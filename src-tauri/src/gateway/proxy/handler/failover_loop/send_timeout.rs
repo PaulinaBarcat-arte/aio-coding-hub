@@ -14,15 +14,13 @@ pub(super) async fn handle_timeout(
     let upstream_first_byte_timeout_secs = ctx.upstream_first_byte_timeout_secs;
     let max_attempts_per_provider = ctx.max_attempts_per_provider;
 
-    let ProviderCtx {
+    let ProviderCtxOwned {
         provider_id,
         provider_name_base,
         provider_base_url_base,
         provider_index,
         session_reuse,
-    } = provider_ctx;
-    let provider_name_base = provider_name_base.to_string();
-    let provider_base_url_base = provider_base_url_base.to_string();
+    } = ProviderCtxOwned::from(provider_ctx);
 
     let AttemptCtx {
         attempt_index: _,

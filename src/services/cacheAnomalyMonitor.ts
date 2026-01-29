@@ -36,6 +36,15 @@ const THRESHOLDS = {
   createReadImbalanceMin: 3,
 } as const;
 
+// Some models may naturally not create caches (e.g. Haiku). For these models we skip monitoring entirely.
+const NON_CACHING_MODEL_KEYWORDS = ["haiku"] as const;
+
+function isNonCachingModel(cliKey: SupportedCliKey, model: string): boolean {
+  if (cliKey !== "claude") return false;
+  const m = model.toLowerCase();
+  return NON_CACHING_MODEL_KEYWORDS.some((keyword) => m.includes(keyword));
+}
+
 type SupportedCliKey = "claude" | "codex";
 
 type Listener = () => void;
@@ -186,10 +195,9 @@ class MinuteRing {
   }
 }
 
-type TraceModelEntry = {
-  model: string;
-  seenAtMs: number;
-};
+type TraceModelEntry =
+  | { ignore: true; seenAtMs: number }
+  | { ignore: false; model: string; seenAtMs: number };
 
 const state = {
   enabledAtMs: enabled ? Date.now() : 0,
@@ -577,8 +585,14 @@ export function ingestCacheAnomalyRequestStart(payload: GatewayRequestStartEvent
   if (!payload?.trace_id) return;
   if (!isSupportedCliKey(payload.cli_key)) return;
 
+  const nowMs = Date.now();
   const model = normalizeModelName(payload.requested_model);
-  state.traceModels.set(payload.trace_id, { model, seenAtMs: Date.now() });
+  const ignore = isNonCachingModel(payload.cli_key, model);
+
+  state.traceModels.set(
+    payload.trace_id,
+    ignore ? { ignore: true, seenAtMs: nowMs } : { ignore: false, model, seenAtMs: nowMs }
+  );
 }
 
 export function ingestCacheAnomalyRequest(payload: GatewayRequestEvent) {
@@ -599,7 +613,8 @@ export function ingestCacheAnomalyRequest(payload: GatewayRequestEvent) {
 
   const traceEntry = state.traceModels.get(payload.trace_id);
   if (traceEntry) state.traceModels.delete(payload.trace_id);
-  const model = traceEntry?.model ?? "Unknown";
+  if (traceEntry?.ignore) return;
+  const model = traceEntry && !traceEntry.ignore ? traceEntry.model : "Unknown";
 
   const sampleBase = extractSample(payload.cli_key, payload, nowMs);
   if (sampleBase.successRequest === 0) return;

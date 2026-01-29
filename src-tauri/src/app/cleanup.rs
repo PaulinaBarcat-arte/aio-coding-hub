@@ -4,47 +4,123 @@ use super::app_state::GatewayState;
 use crate::blocking;
 use crate::cli_proxy;
 use crate::shared::mutex_ext::MutexExt;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::OnceLock;
 use std::time::Duration;
 use tauri::Manager;
+use tokio::sync::Notify;
 
-static CLEANUP_STARTED: AtomicBool = AtomicBool::new(false);
+const CLEANUP_STATE_IDLE: u8 = 0;
+const CLEANUP_STATE_RUNNING: u8 = 1;
+const CLEANUP_STATE_DONE: u8 = 2;
+
+const CLEANUP_WAIT_TIMEOUT: Duration = Duration::from_secs(15);
+const CLI_PROXY_RESTORE_TIMEOUT: Duration = Duration::from_secs(3);
+
+static CLEANUP_STATE: AtomicU8 = AtomicU8::new(CLEANUP_STATE_IDLE);
+static CLEANUP_NOTIFY: OnceLock<Notify> = OnceLock::new();
+
+fn cleanup_notify() -> &'static Notify {
+    CLEANUP_NOTIFY.get_or_init(Notify::new)
+}
 
 pub(crate) async fn cleanup_before_exit(app: &tauri::AppHandle) {
-    if CLEANUP_STARTED.swap(true, Ordering::SeqCst) {
+    let notify = cleanup_notify();
+    match CLEANUP_STATE.compare_exchange(
+        CLEANUP_STATE_IDLE,
+        CLEANUP_STATE_RUNNING,
+        Ordering::AcqRel,
+        Ordering::Acquire,
+    ) {
+        Ok(_) => {
+            stop_gateway_best_effort(app).await;
+            restore_cli_proxy_keep_state_best_effort(
+                app,
+                "cleanup_cli_proxy_restore_keep_state",
+                "退出清理",
+                true,
+            )
+            .await;
+
+            CLEANUP_STATE.store(CLEANUP_STATE_DONE, Ordering::Release);
+            notify.notify_waiters();
+        }
+        Err(state) => {
+            if state == CLEANUP_STATE_DONE {
+                return;
+            }
+            wait_for_cleanup_done(notify).await;
+        }
+    }
+}
+
+async fn wait_for_cleanup_done(notify: &Notify) {
+    if CLEANUP_STATE.load(Ordering::Acquire) == CLEANUP_STATE_DONE {
         return;
     }
 
-    stop_gateway_best_effort(app).await;
+    let wait = async {
+        while CLEANUP_STATE.load(Ordering::Acquire) != CLEANUP_STATE_DONE {
+            let notified = notify.notified();
+            if CLEANUP_STATE.load(Ordering::Acquire) == CLEANUP_STATE_DONE {
+                break;
+            }
+            notified.await;
+        }
+    };
 
-    let app_for_restore = app.clone();
-    match blocking::run("cleanup_cli_proxy_restore_keep_state", move || {
-        cli_proxy::restore_enabled_keep_state(&app_for_restore)
-    })
-    .await
+    if tokio::time::timeout(CLEANUP_WAIT_TIMEOUT, wait)
+        .await
+        .is_err()
     {
-        Ok(results) => {
+        tracing::warn!(
+            "退出清理：等待清理完成超时（{}秒），将继续退出流程",
+            CLEANUP_WAIT_TIMEOUT.as_secs()
+        );
+    }
+}
+
+pub(crate) async fn restore_cli_proxy_keep_state_best_effort(
+    app: &tauri::AppHandle,
+    label: &'static str,
+    context: &'static str,
+    log_success: bool,
+) {
+    let app_for_restore = app.clone();
+    let fut = blocking::run(label, move || {
+        cli_proxy::restore_enabled_keep_state(&app_for_restore)
+    });
+
+    match tokio::time::timeout(CLI_PROXY_RESTORE_TIMEOUT, fut).await {
+        Ok(Ok(results)) => {
             for result in results {
                 if result.ok {
-                    tracing::info!(
-                        cli_key = %result.cli_key,
-                        trace_id = %result.trace_id,
-                        "退出清理：已恢复 cli_proxy 直连配置（保留启用状态）"
-                    );
-                } else {
-                    tracing::warn!(
-                        cli_key = %result.cli_key,
-                        trace_id = %result.trace_id,
-                        error_code = %result.error_code.unwrap_or_default(),
-                        "退出清理：恢复 cli_proxy 直连配置失败: {}",
-                        result.message
-                    );
+                    if log_success {
+                        tracing::info!(
+                            cli_key = %result.cli_key,
+                            trace_id = %result.trace_id,
+                            "{context}：已恢复 cli_proxy 直连配置（保留启用状态）"
+                        );
+                    }
+                    continue;
                 }
+
+                tracing::warn!(
+                    cli_key = %result.cli_key,
+                    trace_id = %result.trace_id,
+                    error_code = %result.error_code.unwrap_or_default(),
+                    "{context}：恢复 cli_proxy 直连配置失败: {}",
+                    result.message
+                );
             }
         }
-        Err(err) => {
-            tracing::warn!("退出清理：恢复 cli_proxy 直连配置任务失败: {}", err);
+        Ok(Err(err)) => {
+            tracing::warn!("{context}：恢复 cli_proxy 直连配置任务失败: {}", err);
         }
+        Err(_) => tracing::warn!(
+            "{context}：恢复 cli_proxy 直连配置任务超时（{}秒）",
+            CLI_PROXY_RESTORE_TIMEOUT.as_secs()
+        ),
     }
 }
 

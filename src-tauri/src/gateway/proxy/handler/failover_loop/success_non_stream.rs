@@ -12,34 +12,22 @@ pub(super) async fn handle_success_non_stream(
     status: StatusCode,
     mut response_headers: HeaderMap,
 ) -> LoopControl {
-    let state = ctx.state;
-    let cli_key = ctx.cli_key.to_string();
-    let method_hint = ctx.method_hint.to_string();
-    let forwarded_path = ctx.forwarded_path.to_string();
-    let query = ctx.query.clone();
-    let trace_id = ctx.trace_id.to_string();
-    let started = ctx.started;
-    let created_at_ms = ctx.created_at_ms;
-    let created_at = ctx.created_at;
-    let session_id = ctx.session_id.clone();
-    let requested_model = ctx.requested_model.clone();
-    let effective_sort_mode_id = ctx.effective_sort_mode_id;
-    let special_settings = Arc::clone(ctx.special_settings);
-    let provider_cooldown_secs = ctx.provider_cooldown_secs;
-    let upstream_request_timeout_non_streaming = ctx.upstream_request_timeout_non_streaming;
-    let max_attempts_per_provider = ctx.max_attempts_per_provider;
-    let enable_response_fixer = ctx.enable_response_fixer;
-    let response_fixer_non_stream_config = ctx.response_fixer_non_stream_config;
+    let common = CommonCtxOwned::from(ctx);
+    let provider_ctx_owned = ProviderCtxOwned::from(provider_ctx);
 
-    let ProviderCtx {
-        provider_id,
-        provider_name_base,
-        provider_base_url_base,
-        provider_index,
-        session_reuse,
-    } = provider_ctx;
-    let provider_name_base = provider_name_base.to_string();
-    let provider_base_url_base = provider_base_url_base.to_string();
+    let state = common.state;
+    let started = common.started;
+    let created_at_ms = common.created_at_ms;
+    let created_at = common.created_at;
+    let provider_cooldown_secs = common.provider_cooldown_secs;
+    let upstream_request_timeout_non_streaming = common.upstream_request_timeout_non_streaming;
+    let max_attempts_per_provider = common.max_attempts_per_provider;
+    let enable_response_fixer = common.enable_response_fixer;
+    let response_fixer_non_stream_config = common.response_fixer_non_stream_config;
+
+    let provider_id = provider_ctx_owned.provider_id;
+    let provider_index = provider_ctx_owned.provider_index;
+    let session_reuse = provider_ctx_owned.session_reuse;
 
     let AttemptCtx {
         attempt_index: _,
@@ -60,7 +48,6 @@ pub(super) async fn handle_success_non_stream(
 
     {
         strip_hop_headers(&mut response_headers);
-        let attempts_json = serde_json::to_string(&attempts).unwrap_or_else(|_| "[]".to_string());
 
         let should_gunzip = has_gzip_content_encoding(&response_headers);
 
@@ -70,8 +57,8 @@ pub(super) async fn handle_success_non_stream(
 
                 attempts.push(FailoverAttempt {
                     provider_id,
-                    provider_name: provider_name_base.clone(),
-                    base_url: provider_base_url_base.clone(),
+                    provider_name: provider_ctx_owned.provider_name_base.clone(),
+                    base_url: provider_ctx_owned.provider_base_url_base.clone(),
                     outcome: outcome.clone(),
                     status: Some(status.as_u16()),
                     provider_index: Some(provider_index),
@@ -98,35 +85,14 @@ pub(super) async fn handle_success_non_stream(
                 )
                 .await;
 
-                let ctx = StreamFinalizeCtx {
-                    app: state.app.clone(),
-                    db: state.db.clone(),
-                    log_tx: state.log_tx.clone(),
-                    circuit: state.circuit.clone(),
-                    session: state.session.clone(),
-                    session_id: session_id.clone(),
-                    sort_mode_id: effective_sort_mode_id,
-                    trace_id: trace_id.clone(),
-                    cli_key: cli_key.clone(),
-                    method: method_hint.clone(),
-                    path: forwarded_path.clone(),
-                    query: query.clone(),
-                    excluded_from_stats: false,
-                    special_settings: special_settings.clone(),
-                    status: status.as_u16(),
-                    error_category: None,
-                    error_code: None,
-                    started,
-                    attempts: attempts.clone(),
-                    attempts_json,
-                    requested_model: requested_model.clone(),
-                    created_at_ms,
-                    created_at,
-                    provider_cooldown_secs,
-                    provider_id,
-                    provider_name: provider_name_base.clone(),
-                    base_url: provider_base_url_base.clone(),
-                };
+                let ctx = build_stream_finalize_ctx(
+                    &common,
+                    &provider_ctx_owned,
+                    attempts.as_slice(),
+                    status.as_u16(),
+                    None,
+                    None,
+                );
 
                 if should_gunzip {
                     // 上游可能无视 accept-encoding: identity 返回 gzip；对齐 claude-code-hub：解压并移除头。
@@ -146,7 +112,7 @@ pub(super) async fn handle_success_non_stream(
                     return LoopControl::Return(build_response(
                         status,
                         &response_headers,
-                        &trace_id,
+                        common.trace_id.as_str(),
                         body,
                     ));
                 }
@@ -161,7 +127,7 @@ pub(super) async fn handle_success_non_stream(
                 return LoopControl::Return(build_response(
                     status,
                     &response_headers,
-                    &trace_id,
+                    common.trace_id.as_str(),
                     body,
                 ));
             }
@@ -170,8 +136,8 @@ pub(super) async fn handle_success_non_stream(
 
                 attempts.push(FailoverAttempt {
                     provider_id,
-                    provider_name: provider_name_base.clone(),
-                    base_url: provider_base_url_base.clone(),
+                    provider_name: provider_ctx_owned.provider_name_base.clone(),
+                    base_url: provider_ctx_owned.provider_base_url_base.clone(),
                     outcome: outcome.clone(),
                     status: Some(status.as_u16()),
                     provider_index: Some(provider_index),
@@ -198,35 +164,14 @@ pub(super) async fn handle_success_non_stream(
                 )
                 .await;
 
-                let ctx = StreamFinalizeCtx {
-                    app: state.app.clone(),
-                    db: state.db.clone(),
-                    log_tx: state.log_tx.clone(),
-                    circuit: state.circuit.clone(),
-                    session: state.session.clone(),
-                    session_id: session_id.clone(),
-                    sort_mode_id: effective_sort_mode_id,
-                    trace_id: trace_id.clone(),
-                    cli_key: cli_key.clone(),
-                    method: method_hint.clone(),
-                    path: forwarded_path.clone(),
-                    query: query.clone(),
-                    excluded_from_stats: false,
-                    special_settings: special_settings.clone(),
-                    status: status.as_u16(),
-                    error_category: None,
-                    error_code: None,
-                    started,
-                    attempts: attempts.clone(),
-                    attempts_json,
-                    requested_model: requested_model.clone(),
-                    created_at_ms,
-                    created_at,
-                    provider_cooldown_secs,
-                    provider_id,
-                    provider_name: provider_name_base.clone(),
-                    base_url: provider_base_url_base.clone(),
-                };
+                let ctx = build_stream_finalize_ctx(
+                    &common,
+                    &provider_ctx_owned,
+                    attempts.as_slice(),
+                    status.as_u16(),
+                    None,
+                    None,
+                );
 
                 if should_gunzip {
                     // 上游可能无视 accept-encoding: identity 返回 gzip；对齐 claude-code-hub：解压并移除头。
@@ -257,7 +202,7 @@ pub(super) async fn handle_success_non_stream(
                 for (k, v) in response_headers.iter() {
                     builder = builder.header(k, v);
                 }
-                builder = builder.header("x-trace-id", trace_id.as_str());
+                builder = builder.header("x-trace-id", common.trace_id.as_str());
 
                 abort_guard.disarm();
                 return LoopControl::Return(match builder.body(body) {
@@ -268,7 +213,7 @@ pub(super) async fn handle_success_non_stream(
                                 .into_response();
                         fallback.headers_mut().insert(
                             "x-trace-id",
-                            HeaderValue::from_str(&trace_id)
+                            HeaderValue::from_str(common.trace_id.as_str())
                                 .unwrap_or(HeaderValue::from_static("unknown")),
                         );
                         fallback
@@ -323,8 +268,8 @@ pub(super) async fn handle_success_non_stream(
 
             attempts.push(FailoverAttempt {
                 provider_id,
-                provider_name: provider_name_base.clone(),
-                base_url: provider_base_url_base.clone(),
+                provider_name: provider_ctx_owned.provider_name_base.clone(),
+                base_url: provider_ctx_owned.provider_base_url_base.clone(),
                 outcome: outcome.clone(),
                 status: Some(status.as_u16()),
                 provider_index: Some(provider_index),
@@ -387,8 +332,8 @@ pub(super) async fn handle_success_non_stream(
 
     attempts.push(FailoverAttempt {
         provider_id,
-        provider_name: provider_name_base.clone(),
-        base_url: provider_base_url_base.clone(),
+        provider_name: provider_ctx_owned.provider_name_base.clone(),
+        base_url: provider_ctx_owned.provider_base_url_base.clone(),
         outcome: outcome.clone(),
         status: Some(status.as_u16()),
         provider_index: Some(provider_index),
@@ -432,7 +377,7 @@ pub(super) async fn handle_success_non_stream(
             HeaderValue::from_static(outcome.header_value),
         );
         if let Some(setting) = outcome.special_setting {
-            if let Ok(mut settings) = special_settings.lock() {
+            if let Ok(mut settings) = common.special_settings.lock() {
                 settings.push(setting);
             }
         }
@@ -441,7 +386,7 @@ pub(super) async fn handle_success_non_stream(
 
     let usage = usage::parse_usage_from_json_bytes(&body_bytes);
     let usage_metrics = usage.as_ref().map(|u| u.metrics.clone());
-    let requested_model_for_log = requested_model.clone().or_else(|| {
+    let requested_model_for_log = common.requested_model.clone().or_else(|| {
         if body_bytes.is_empty() {
             None
         } else {
@@ -454,7 +399,7 @@ pub(super) async fn handle_success_non_stream(
     for (k, v) in response_headers.iter() {
         builder = builder.header(k, v);
     }
-    builder = builder.header("x-trace-id", trace_id.as_str());
+    builder = builder.header("x-trace-id", common.trace_id.as_str());
 
     let out = match builder.body(body) {
         Ok(r) => r,
@@ -463,7 +408,8 @@ pub(super) async fn handle_success_non_stream(
                 (StatusCode::INTERNAL_SERVER_ERROR, "GW_RESPONSE_BUILD_ERROR").into_response();
             fallback.headers_mut().insert(
                 "x-trace-id",
-                HeaderValue::from_str(&trace_id).unwrap_or(HeaderValue::from_static("unknown")),
+                HeaderValue::from_str(common.trace_id.as_str())
+                    .unwrap_or(HeaderValue::from_static("unknown")),
             );
             fallback
         }
@@ -474,11 +420,11 @@ pub(super) async fn handle_success_non_stream(
         let change = provider_router::record_success_and_emit_transition(
             provider_router::RecordCircuitArgs::from_state(
                 state,
-                trace_id.as_str(),
-                cli_key.as_str(),
+                common.trace_id.as_str(),
+                common.cli_key.as_str(),
                 provider_id,
-                provider_name_base.as_str(),
-                provider_base_url_base.as_str(),
+                provider_ctx_owned.provider_name_base.as_str(),
+                provider_ctx_owned.provider_base_url_base.as_str(),
                 now_unix,
             ),
         );
@@ -488,59 +434,42 @@ pub(super) async fn handle_success_non_stream(
             last.circuit_failure_threshold = Some(change.after.failure_threshold);
         }
         if (200..300).contains(&status.as_u16()) {
-            if let Some(session_id) = session_id.as_deref() {
+            if let Some(session_id) = common.session_id.as_deref() {
                 state.session.bind_success(
-                    &cli_key,
+                    &common.cli_key,
                     session_id,
                     provider_id,
-                    effective_sort_mode_id,
+                    common.effective_sort_mode_id,
                     now_unix,
                 );
             }
         }
     }
 
-    let attempts_json = serde_json::to_string(&attempts).unwrap_or_else(|_| "[]".to_string());
     let duration_ms = started.elapsed().as_millis();
-    emit_request_event(
-        &state.app,
-        trace_id.clone(),
-        cli_key.clone(),
-        method_hint.clone(),
-        forwarded_path.clone(),
-        query.clone(),
-        Some(status.as_u16()),
-        None,
-        None,
+    emit_request_event_and_enqueue_request_log(RequestEndArgs {
+        state,
+        trace_id: common.trace_id.as_str(),
+        cli_key: common.cli_key.as_str(),
+        method: common.method_hint.as_str(),
+        path: common.forwarded_path.as_str(),
+        query: common.query.as_deref(),
+        excluded_from_stats: false,
+        status: Some(status.as_u16()),
+        error_category: None,
+        error_code: None,
         duration_ms,
-        Some(duration_ms),
-        attempts.clone(),
+        event_ttfb_ms: Some(duration_ms),
+        log_ttfb_ms: None,
+        attempts: attempts.as_slice(),
+        special_settings_json: response_fixer::special_settings_json(&common.special_settings),
+        session_id: common.session_id.clone(),
+        requested_model: requested_model_for_log,
+        created_at_ms,
+        created_at,
         usage_metrics,
-    );
-    enqueue_request_log_with_backpressure(
-        &state.app,
-        &state.db,
-        &state.log_tx,
-        RequestLogEnqueueArgs {
-            trace_id,
-            cli_key,
-            session_id: session_id.clone(),
-            method: method_hint,
-            path: forwarded_path,
-            query,
-            excluded_from_stats: false,
-            special_settings_json: response_fixer::special_settings_json(&special_settings),
-            status: Some(status.as_u16()),
-            error_code: None,
-            duration_ms,
-            ttfb_ms: None,
-            attempts_json,
-            requested_model: requested_model_for_log,
-            created_at_ms,
-            created_at,
-            usage,
-        },
-    )
+        usage,
+    })
     .await;
     abort_guard.disarm();
     LoopControl::Return(out)

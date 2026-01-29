@@ -17,31 +17,33 @@ pub(super) async fn handle_thinking_signature_rectifier_400(
     strip_request_content_encoding: &mut bool,
     thinking_signature_rectifier_retried: &mut bool,
 ) -> LoopControl {
-    let state = ctx.state;
-    let cli_key = ctx.cli_key.to_string();
-    let method_hint = ctx.method_hint.to_string();
-    let forwarded_path = ctx.forwarded_path.to_string();
-    let query = ctx.query.clone();
-    let trace_id = ctx.trace_id.to_string();
-    let started = ctx.started;
-    let created_at_ms = ctx.created_at_ms;
-    let created_at = ctx.created_at;
-    let session_id = ctx.session_id.clone();
-    let requested_model = ctx.requested_model.clone();
-    let special_settings = Arc::clone(ctx.special_settings);
-    let enable_response_fixer = ctx.enable_response_fixer;
-    let response_fixer_non_stream_config = ctx.response_fixer_non_stream_config;
     let introspection_body = ctx.introspection_body;
 
-    let ProviderCtx {
+    let CommonCtxOwned {
+        state,
+        cli_key,
+        method_hint,
+        forwarded_path,
+        query,
+        trace_id,
+        started,
+        created_at_ms,
+        created_at,
+        session_id,
+        requested_model,
+        special_settings,
+        enable_response_fixer,
+        response_fixer_non_stream_config,
+        ..
+    } = CommonCtxOwned::from(ctx);
+
+    let ProviderCtxOwned {
         provider_id,
         provider_name_base,
         provider_base_url_base,
         provider_index,
         session_reuse,
-    } = provider_ctx;
-    let provider_name_base = provider_name_base.to_string();
-    let provider_base_url_base = provider_base_url_base.to_string();
+    } = ProviderCtxOwned::from(provider_ctx);
 
     let AttemptCtx {
         attempt_index: _,
@@ -72,46 +74,29 @@ pub(super) async fn handle_thinking_signature_rectifier_400(
                     format!("failed to read upstream error body: {err}"),
                     attempts.clone(),
                 );
-                emit_request_event(
-                    &state.app,
-                    trace_id.clone(),
-                    cli_key.clone(),
-                    method_hint.clone(),
-                    forwarded_path.clone(),
-                    query.clone(),
-                    Some(StatusCode::BAD_GATEWAY.as_u16()),
-                    Some(ErrorCategory::SystemError.as_str()),
-                    Some("GW_UPSTREAM_BODY_READ_ERROR"),
+                emit_request_event_and_enqueue_request_log(RequestEndArgs {
+                    state,
+                    trace_id: trace_id.as_str(),
+                    cli_key: cli_key.as_str(),
+                    method: method_hint.as_str(),
+                    path: forwarded_path.as_str(),
+                    query: query.as_deref(),
+                    excluded_from_stats: false,
+                    status: Some(StatusCode::BAD_GATEWAY.as_u16()),
+                    error_category: Some(ErrorCategory::SystemError.as_str()),
+                    error_code: Some("GW_UPSTREAM_BODY_READ_ERROR"),
                     duration_ms,
-                    None,
-                    attempts.clone(),
-                    None,
-                );
-                enqueue_request_log_with_backpressure(
-                    &state.app,
-                    &state.db,
-                    &state.log_tx,
-                    RequestLogEnqueueArgs {
-                        trace_id: trace_id.clone(),
-                        cli_key: cli_key.clone(),
-                        session_id: session_id.clone(),
-                        method: method_hint.clone(),
-                        path: forwarded_path.clone(),
-                        query: query.clone(),
-                        excluded_from_stats: false,
-                        special_settings_json: None,
-                        status: Some(StatusCode::BAD_GATEWAY.as_u16()),
-                        error_code: Some("GW_UPSTREAM_BODY_READ_ERROR"),
-                        duration_ms,
-                        ttfb_ms: None,
-                        attempts_json: serde_json::to_string(&attempts)
-                            .unwrap_or_else(|_| "[]".to_string()),
-                        requested_model: requested_model.clone(),
-                        created_at_ms,
-                        created_at,
-                        usage: None,
-                    },
-                )
+                    event_ttfb_ms: None,
+                    log_ttfb_ms: None,
+                    attempts: attempts.as_slice(),
+                    special_settings_json: None,
+                    session_id,
+                    requested_model,
+                    created_at_ms,
+                    created_at,
+                    usage_metrics: None,
+                    usage: None,
+                })
                 .await;
                 abort_guard.disarm();
                 return LoopControl::Return(resp);
@@ -289,58 +274,40 @@ pub(super) async fn handle_thinking_signature_rectifier_400(
                     body_to_return = outcome.body;
                 }
 
-                let attempts_json =
-                    serde_json::to_string(&attempts).unwrap_or_else(|_| "[]".to_string());
                 let special_settings_json =
                     response_fixer::special_settings_json(&special_settings);
                 let duration_ms = started.elapsed().as_millis();
 
-                emit_request_event(
-                    &state.app,
-                    trace_id.clone(),
-                    cli_key.clone(),
-                    method_hint.clone(),
-                    forwarded_path.clone(),
-                    query.clone(),
-                    Some(status.as_u16()),
-                    Some(category.as_str()),
-                    Some(error_code),
+                emit_request_event_and_enqueue_request_log(RequestEndArgs {
+                    state,
+                    trace_id: trace_id.as_str(),
+                    cli_key: cli_key.as_str(),
+                    method: method_hint.as_str(),
+                    path: forwarded_path.as_str(),
+                    query: query.as_deref(),
+                    excluded_from_stats: false,
+                    status: Some(status.as_u16()),
+                    error_category: Some(category.as_str()),
+                    error_code: Some(error_code),
                     duration_ms,
-                    Some(duration_ms),
-                    attempts.clone(),
-                    None,
-                );
-                enqueue_request_log_with_backpressure(
-                    &state.app,
-                    &state.db,
-                    &state.log_tx,
-                    RequestLogEnqueueArgs {
-                        trace_id: trace_id.clone(),
-                        cli_key: cli_key.clone(),
-                        session_id: session_id.clone(),
-                        method: method_hint.clone(),
-                        path: forwarded_path.clone(),
-                        query: query.clone(),
-                        excluded_from_stats: false,
-                        special_settings_json,
-                        status: Some(status.as_u16()),
-                        error_code: Some(error_code),
-                        duration_ms,
-                        ttfb_ms: Some(duration_ms),
-                        attempts_json,
-                        requested_model: requested_model.clone(),
-                        created_at_ms,
-                        created_at,
-                        usage: None,
-                    },
-                )
+                    event_ttfb_ms: Some(duration_ms),
+                    log_ttfb_ms: Some(duration_ms),
+                    attempts: attempts.as_slice(),
+                    special_settings_json,
+                    session_id,
+                    requested_model,
+                    created_at_ms,
+                    created_at,
+                    usage_metrics: None,
+                    usage: None,
+                })
                 .await;
 
                 abort_guard.disarm();
                 return LoopControl::Return(build_response(
                     status,
                     &response_headers,
-                    &trace_id,
+                    trace_id.as_str(),
                     Body::from(body_to_return),
                 ));
             }

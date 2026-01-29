@@ -8,26 +8,26 @@ use super::super::super::http_util::{
     build_response, has_gzip_content_encoding, has_non_identity_content_encoding,
     maybe_gunzip_response_body_bytes_with_limit,
 };
-use super::super::super::logging::enqueue_request_log_with_backpressure;
 use super::super::super::provider_router;
 use super::super::super::upstream_client_error_rules;
-use super::super::super::{ErrorCategory, RequestLogEnqueueArgs};
+use super::super::super::ErrorCategory;
 use super::context::{
-    AttemptCtx, CommonCtx, LoopControl, LoopState, ProviderCtx, MAX_NON_SSE_BODY_BYTES,
+    AttemptCtx, CommonCtx, CommonCtxOwned, LoopControl, LoopState, ProviderCtx,
+    MAX_NON_SSE_BODY_BYTES,
 };
 use super::thinking_signature_rectifier_400;
 use super::{
     emit_attempt_event_and_log, emit_attempt_event_and_log_with_circuit_before,
     AttemptCircuitFields,
 };
+use super::{emit_request_event_and_enqueue_request_log, RequestEndArgs};
 use crate::circuit_breaker;
-use crate::gateway::events::{emit_request_event, FailoverAttempt};
+use crate::gateway::events::FailoverAttempt;
 use crate::gateway::response_fixer;
 use crate::gateway::streams::GunzipStream;
 use crate::gateway::util::{now_unix_seconds, strip_hop_headers};
 use axum::body::{Body, Bytes};
 use axum::http::{header, HeaderValue};
-use std::sync::Arc;
 
 pub(super) struct UpstreamRequestState<'a> {
     pub(super) upstream_body_bytes: &'a mut Bytes,
@@ -245,19 +245,22 @@ pub(super) async fn handle_non_success_response(
             // On abort, we intentionally do NOT use stream tee finalizers, to avoid triggering
             // provider cooldown on non-retryable client input errors (align with claude-code-hub).
 
-            let cli_key = ctx.cli_key.to_string();
-            let method_hint = ctx.method_hint.to_string();
-            let forwarded_path = ctx.forwarded_path.to_string();
-            let query = ctx.query.clone();
-            let trace_id = ctx.trace_id.to_string();
-            let started = ctx.started;
-            let created_at_ms = ctx.created_at_ms;
-            let created_at = ctx.created_at;
-            let session_id = ctx.session_id.clone();
-            let requested_model = ctx.requested_model.clone();
-            let special_settings = Arc::clone(ctx.special_settings);
-            let enable_response_fixer = ctx.enable_response_fixer;
-            let response_fixer_non_stream_config = ctx.response_fixer_non_stream_config;
+            let CommonCtxOwned {
+                cli_key,
+                method_hint,
+                forwarded_path,
+                query,
+                trace_id,
+                started,
+                created_at_ms,
+                created_at,
+                session_id,
+                requested_model,
+                special_settings,
+                enable_response_fixer,
+                response_fixer_non_stream_config,
+                ..
+            } = CommonCtxOwned::from(ctx);
 
             if let (Some(mut response_headers), Some(mut body_bytes)) =
                 (abort_response_headers, abort_body_bytes)
@@ -282,51 +285,33 @@ pub(super) async fn handle_non_success_response(
                     body_bytes = outcome.body;
                 }
 
-                let attempts_json =
-                    serde_json::to_string(attempts).unwrap_or_else(|_| "[]".to_string());
                 let special_settings_json =
                     response_fixer::special_settings_json(&special_settings);
                 let duration_ms = started.elapsed().as_millis();
 
-                emit_request_event(
-                    &state.app,
-                    trace_id.clone(),
-                    cli_key.clone(),
-                    method_hint.clone(),
-                    forwarded_path.clone(),
-                    query.clone(),
-                    Some(status.as_u16()),
-                    Some(category.as_str()),
-                    Some(error_code),
+                emit_request_event_and_enqueue_request_log(RequestEndArgs {
+                    state,
+                    trace_id: trace_id.as_str(),
+                    cli_key: cli_key.as_str(),
+                    method: method_hint.as_str(),
+                    path: forwarded_path.as_str(),
+                    query: query.as_deref(),
+                    excluded_from_stats: false,
+                    status: Some(status.as_u16()),
+                    error_category: Some(category.as_str()),
+                    error_code: Some(error_code),
                     duration_ms,
-                    Some(duration_ms),
-                    attempts.clone(),
-                    None,
-                );
-                enqueue_request_log_with_backpressure(
-                    &state.app,
-                    &state.db,
-                    &state.log_tx,
-                    RequestLogEnqueueArgs {
-                        trace_id: trace_id.clone(),
-                        cli_key: cli_key.clone(),
-                        session_id: session_id.clone(),
-                        method: method_hint.clone(),
-                        path: forwarded_path.clone(),
-                        query: query.clone(),
-                        excluded_from_stats: false,
-                        special_settings_json,
-                        status: Some(status.as_u16()),
-                        error_code: Some(error_code),
-                        duration_ms,
-                        ttfb_ms: Some(duration_ms),
-                        attempts_json,
-                        requested_model: requested_model.clone(),
-                        created_at_ms,
-                        created_at,
-                        usage: None,
-                    },
-                )
+                    event_ttfb_ms: Some(duration_ms),
+                    log_ttfb_ms: Some(duration_ms),
+                    attempts: attempts.as_slice(),
+                    special_settings_json,
+                    session_id,
+                    requested_model,
+                    created_at_ms,
+                    created_at,
+                    usage_metrics: None,
+                    usage: None,
+                })
                 .await;
 
                 abort_guard.disarm();
@@ -339,50 +324,32 @@ pub(super) async fn handle_non_success_response(
                 ));
             }
 
-            let attempts_json =
-                serde_json::to_string(attempts).unwrap_or_else(|_| "[]".to_string());
             let special_settings_json = response_fixer::special_settings_json(&special_settings);
             let duration_ms = started.elapsed().as_millis();
 
-            emit_request_event(
-                &state.app,
-                trace_id.clone(),
-                cli_key.clone(),
-                method_hint.clone(),
-                forwarded_path.clone(),
-                query.clone(),
-                Some(status.as_u16()),
-                Some(category.as_str()),
-                Some(error_code),
+            emit_request_event_and_enqueue_request_log(RequestEndArgs {
+                state,
+                trace_id: trace_id.as_str(),
+                cli_key: cli_key.as_str(),
+                method: method_hint.as_str(),
+                path: forwarded_path.as_str(),
+                query: query.as_deref(),
+                excluded_from_stats: false,
+                status: Some(status.as_u16()),
+                error_category: Some(category.as_str()),
+                error_code: Some(error_code),
                 duration_ms,
-                Some(duration_ms),
-                attempts.clone(),
-                None,
-            );
-            enqueue_request_log_with_backpressure(
-                &state.app,
-                &state.db,
-                &state.log_tx,
-                RequestLogEnqueueArgs {
-                    trace_id: trace_id.clone(),
-                    cli_key: cli_key.clone(),
-                    session_id: session_id.clone(),
-                    method: method_hint.clone(),
-                    path: forwarded_path.clone(),
-                    query: query.clone(),
-                    excluded_from_stats: false,
-                    special_settings_json,
-                    status: Some(status.as_u16()),
-                    error_code: Some(error_code),
-                    duration_ms,
-                    ttfb_ms: Some(duration_ms),
-                    attempts_json,
-                    requested_model: requested_model.clone(),
-                    created_at_ms,
-                    created_at,
-                    usage: None,
-                },
-            )
+                event_ttfb_ms: Some(duration_ms),
+                log_ttfb_ms: Some(duration_ms),
+                attempts: attempts.as_slice(),
+                special_settings_json,
+                session_id,
+                requested_model,
+                created_at_ms,
+                created_at,
+                usage_metrics: None,
+                usage: None,
+            })
             .await;
 
             abort_guard.disarm();

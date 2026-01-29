@@ -21,8 +21,11 @@ pub(crate) use shared::{blocking, circuit_breaker};
 use app_state::{ensure_db_ready, DbInitState, GatewayState};
 use commands::*;
 use shared::mutex_ext::MutexExt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Emitter;
 use tauri::Manager;
+
+static EXIT_CLEANUP_SPAWNED: AtomicBool = AtomicBool::new(false);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -252,9 +255,13 @@ pub fn run() {
             // Note: `prevent_exit` is ignored for restart requests.
             // For app_restart we run cleanup explicitly before requesting restart.
             if *code != Some(tauri::RESTART_EXIT_CODE) {
-                tracing::info!("收到退出请求，开始清理...");
                 api.prevent_exit();
 
+                if EXIT_CLEANUP_SPAWNED.swap(true, Ordering::SeqCst) {
+                    return;
+                }
+
+                tracing::info!("收到退出请求，开始清理...");
                 let app_handle = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
                     crate::app::cleanup::cleanup_before_exit(&app_handle).await;

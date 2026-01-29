@@ -5,6 +5,7 @@ mod context;
 mod event_helpers;
 mod finalize;
 mod provider_gate;
+mod request_end_helpers;
 mod send;
 mod send_timeout;
 mod success_event_stream;
@@ -17,8 +18,8 @@ use event_helpers::{
     emit_attempt_event_and_log, emit_attempt_event_and_log_with_circuit_before,
     AttemptCircuitFields,
 };
+use request_end_helpers::{emit_request_event_and_enqueue_request_log, RequestEndArgs};
 
-use super::super::logging::enqueue_request_log_with_backpressure;
 use super::super::{
     errors::{classify_upstream_status, error_response},
     failover::{retry_backoff_delay, select_provider_base_url_for_request, FailoverDecision},
@@ -26,7 +27,7 @@ use super::super::{
         build_response, has_gzip_content_encoding, has_non_identity_content_encoding,
         is_event_stream, maybe_gunzip_response_body_bytes_with_limit,
     },
-    ErrorCategory, RequestLogEnqueueArgs,
+    ErrorCategory,
 };
 
 use crate::usage;
@@ -39,13 +40,11 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use crate::gateway::events::{
-    emit_attempt_event, emit_request_event, FailoverAttempt, GatewayAttemptEvent,
-};
+use crate::gateway::events::{emit_attempt_event, FailoverAttempt, GatewayAttemptEvent};
 use crate::gateway::response_fixer;
 use crate::gateway::streams::{
-    spawn_usage_sse_relay_body, FirstChunkStream, GunzipStream, StreamFinalizeCtx,
-    TimingOnlyTeeStream, UsageBodyBufferTeeStream, UsageSseTeeStream,
+    spawn_usage_sse_relay_body, FirstChunkStream, GunzipStream, TimingOnlyTeeStream,
+    UsageBodyBufferTeeStream, UsageSseTeeStream,
 };
 use crate::gateway::thinking_signature_rectifier;
 use crate::gateway::util::{
@@ -54,8 +53,8 @@ use crate::gateway::util::{
 };
 
 use context::{
-    AttemptCtx, CommonCtx, CommonCtxArgs, LoopControl, LoopState, ProviderCtx,
-    MAX_NON_SSE_BODY_BYTES,
+    build_stream_finalize_ctx, AttemptCtx, CommonCtx, CommonCtxArgs, CommonCtxOwned, LoopControl,
+    LoopState, ProviderCtx, ProviderCtxOwned, MAX_NON_SSE_BODY_BYTES,
 };
 
 struct FinalizeOwnedCommon {
@@ -329,14 +328,14 @@ pub(super) async fn run(mut input: RequestContext) -> Response {
 
                     if status.is_success() {
                         if is_event_stream(&response_headers) {
-                            let loop_state = LoopState {
-                                attempts: &mut attempts,
-                                failed_provider_ids: &mut failed_provider_ids,
-                                last_error_category: &mut last_error_category,
-                                last_error_code: &mut last_error_code,
-                                circuit_snapshot: &mut circuit_snapshot,
-                                abort_guard: &mut input.abort_guard,
-                            };
+                            let loop_state = LoopState::new(
+                                &mut attempts,
+                                &mut failed_provider_ids,
+                                &mut last_error_category,
+                                &mut last_error_code,
+                                &mut circuit_snapshot,
+                                &mut input.abort_guard,
+                            );
                             match success_event_stream::handle_success_event_stream(
                                 ctx,
                                 provider_ctx,
@@ -354,14 +353,14 @@ pub(super) async fn run(mut input: RequestContext) -> Response {
                             }
                         }
 
-                        let loop_state = LoopState {
-                            attempts: &mut attempts,
-                            failed_provider_ids: &mut failed_provider_ids,
-                            last_error_category: &mut last_error_category,
-                            last_error_code: &mut last_error_code,
-                            circuit_snapshot: &mut circuit_snapshot,
-                            abort_guard: &mut input.abort_guard,
-                        };
+                        let loop_state = LoopState::new(
+                            &mut attempts,
+                            &mut failed_provider_ids,
+                            &mut last_error_category,
+                            &mut last_error_code,
+                            &mut circuit_snapshot,
+                            &mut input.abort_guard,
+                        );
                         match success_non_stream::handle_success_non_stream(
                             ctx,
                             provider_ctx,
@@ -379,14 +378,14 @@ pub(super) async fn run(mut input: RequestContext) -> Response {
                         }
                     }
 
-                    let loop_state = LoopState {
-                        attempts: &mut attempts,
-                        failed_provider_ids: &mut failed_provider_ids,
-                        last_error_category: &mut last_error_category,
-                        last_error_code: &mut last_error_code,
-                        circuit_snapshot: &mut circuit_snapshot,
-                        abort_guard: &mut input.abort_guard,
-                    };
+                    let loop_state = LoopState::new(
+                        &mut attempts,
+                        &mut failed_provider_ids,
+                        &mut last_error_category,
+                        &mut last_error_code,
+                        &mut circuit_snapshot,
+                        &mut input.abort_guard,
+                    );
                     match upstream_error::handle_non_success_response(
                         ctx,
                         provider_ctx,
@@ -409,14 +408,14 @@ pub(super) async fn run(mut input: RequestContext) -> Response {
                     }
                 }
                 send::SendResult::Timeout => {
-                    let loop_state = LoopState {
-                        attempts: &mut attempts,
-                        failed_provider_ids: &mut failed_provider_ids,
-                        last_error_category: &mut last_error_category,
-                        last_error_code: &mut last_error_code,
-                        circuit_snapshot: &mut circuit_snapshot,
-                        abort_guard: &mut input.abort_guard,
-                    };
+                    let loop_state = LoopState::new(
+                        &mut attempts,
+                        &mut failed_provider_ids,
+                        &mut last_error_category,
+                        &mut last_error_code,
+                        &mut circuit_snapshot,
+                        &mut input.abort_guard,
+                    );
                     match send_timeout::handle_timeout(ctx, provider_ctx, attempt_ctx, loop_state)
                         .await
                     {
@@ -426,14 +425,14 @@ pub(super) async fn run(mut input: RequestContext) -> Response {
                     }
                 }
                 send::SendResult::Err(err) => {
-                    let loop_state = LoopState {
-                        attempts: &mut attempts,
-                        failed_provider_ids: &mut failed_provider_ids,
-                        last_error_category: &mut last_error_category,
-                        last_error_code: &mut last_error_code,
-                        circuit_snapshot: &mut circuit_snapshot,
-                        abort_guard: &mut input.abort_guard,
-                    };
+                    let loop_state = LoopState::new(
+                        &mut attempts,
+                        &mut failed_provider_ids,
+                        &mut last_error_category,
+                        &mut last_error_code,
+                        &mut circuit_snapshot,
+                        &mut input.abort_guard,
+                    );
                     match upstream_error::handle_reqwest_error(
                         ctx,
                         provider_ctx,

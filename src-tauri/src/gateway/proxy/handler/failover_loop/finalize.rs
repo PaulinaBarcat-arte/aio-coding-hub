@@ -3,9 +3,8 @@
 use super::super::super::abort_guard::RequestAbortGuard;
 use super::super::super::caches::CachedGatewayError;
 use super::super::super::errors::{error_response, error_response_with_retry_after};
-use super::super::super::logging::enqueue_request_log_with_backpressure;
-use super::super::super::RequestLogEnqueueArgs;
-use crate::gateway::events::{emit_request_event, FailoverAttempt};
+use super::{emit_request_event_and_enqueue_request_log, RequestEndArgs};
+use crate::gateway::events::FailoverAttempt;
 use crate::gateway::manager::GatewayAppState;
 use crate::gateway::response_fixer;
 use crate::gateway::util::now_unix_seconds;
@@ -80,46 +79,30 @@ pub(super) async fn all_providers_unavailable(input: AllUnavailableInput<'_>) ->
         retry_after_seconds,
     );
 
-    emit_request_event(
-        &state.app,
-        trace_id.clone(),
-        cli_key.clone(),
-        method_hint.clone(),
-        forwarded_path.clone(),
-        query.clone(),
-        Some(StatusCode::SERVICE_UNAVAILABLE.as_u16()),
-        None,
-        Some("GW_ALL_PROVIDERS_UNAVAILABLE"),
-        started.elapsed().as_millis(),
-        None,
-        vec![],
-        None,
-    );
-
-    enqueue_request_log_with_backpressure(
-        &state.app,
-        &state.db,
-        &state.log_tx,
-        RequestLogEnqueueArgs {
-            trace_id: trace_id.clone(),
-            cli_key,
-            session_id: session_id.clone(),
-            method: method_hint,
-            path: forwarded_path,
-            query,
-            excluded_from_stats: false,
-            special_settings_json: response_fixer::special_settings_json(&special_settings),
-            status: Some(StatusCode::SERVICE_UNAVAILABLE.as_u16()),
-            error_code: Some("GW_ALL_PROVIDERS_UNAVAILABLE"),
-            duration_ms: started.elapsed().as_millis(),
-            ttfb_ms: None,
-            attempts_json: "[]".to_string(),
-            requested_model: requested_model.clone(),
-            created_at_ms,
-            created_at,
-            usage: None,
-        },
-    )
+    let duration_ms = started.elapsed().as_millis();
+    emit_request_event_and_enqueue_request_log(RequestEndArgs {
+        state,
+        trace_id: trace_id.as_str(),
+        cli_key: cli_key.as_str(),
+        method: method_hint.as_str(),
+        path: forwarded_path.as_str(),
+        query: query.as_deref(),
+        excluded_from_stats: false,
+        status: Some(StatusCode::SERVICE_UNAVAILABLE.as_u16()),
+        error_category: None,
+        error_code: Some("GW_ALL_PROVIDERS_UNAVAILABLE"),
+        duration_ms,
+        event_ttfb_ms: None,
+        log_ttfb_ms: None,
+        attempts: &[],
+        special_settings_json: response_fixer::special_settings_json(&special_settings),
+        session_id,
+        requested_model,
+        created_at_ms,
+        created_at,
+        usage_metrics: None,
+        usage: None,
+    })
     .await;
 
     if let Some(retry_after_seconds) = retry_after_seconds.filter(|v| *v > 0) {
@@ -206,46 +189,30 @@ pub(super) async fn all_providers_failed(input: AllFailedInput<'_>) -> Response 
         attempts.clone(),
     );
 
-    emit_request_event(
-        &state.app,
-        trace_id.clone(),
-        cli_key.clone(),
-        method_hint.clone(),
-        forwarded_path.clone(),
-        query.clone(),
-        Some(StatusCode::BAD_GATEWAY.as_u16()),
-        last_error_category,
-        Some(final_error_code),
-        started.elapsed().as_millis(),
-        None,
-        attempts.clone(),
-        None,
-    );
-
-    enqueue_request_log_with_backpressure(
-        &state.app,
-        &state.db,
-        &state.log_tx,
-        RequestLogEnqueueArgs {
-            trace_id,
-            cli_key,
-            session_id: session_id.clone(),
-            method: method_hint,
-            path: forwarded_path,
-            query,
-            excluded_from_stats: false,
-            special_settings_json: response_fixer::special_settings_json(&special_settings),
-            status: Some(StatusCode::BAD_GATEWAY.as_u16()),
-            error_code: Some(final_error_code),
-            duration_ms: started.elapsed().as_millis(),
-            ttfb_ms: None,
-            attempts_json: serde_json::to_string(&attempts).unwrap_or_else(|_| "[]".to_string()),
-            requested_model,
-            created_at_ms,
-            created_at,
-            usage: None,
-        },
-    )
+    let duration_ms = started.elapsed().as_millis();
+    emit_request_event_and_enqueue_request_log(RequestEndArgs {
+        state,
+        trace_id: trace_id.as_str(),
+        cli_key: cli_key.as_str(),
+        method: method_hint.as_str(),
+        path: forwarded_path.as_str(),
+        query: query.as_deref(),
+        excluded_from_stats: false,
+        status: Some(StatusCode::BAD_GATEWAY.as_u16()),
+        error_category: last_error_category,
+        error_code: Some(final_error_code),
+        duration_ms,
+        event_ttfb_ms: None,
+        log_ttfb_ms: None,
+        attempts: attempts.as_slice(),
+        special_settings_json: response_fixer::special_settings_json(&special_settings),
+        session_id,
+        requested_model,
+        created_at_ms,
+        created_at,
+        usage_metrics: None,
+        usage: None,
+    })
     .await;
 
     abort_guard.disarm();
